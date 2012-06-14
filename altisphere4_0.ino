@@ -1,7 +1,3 @@
-#include <SD.h>
-#include <Servo.h>
-#include <TinyGPS.h>
-#include <SoftwareSerial.h>
 // ___________________________
 //|        Ben Oxley          |
 //|AltiSphere Pre Release Code|
@@ -15,6 +11,13 @@
 #else
 #include <WProgram.h>
 #endif
+
+#include <MemoryFree.h>
+#include <SD.h>
+#include <Servo.h>
+#include <TinyGPS.h>
+#include <SoftwareSerial.h>
+
 
 /*
  Output  0 - GPS_RXD          Output  7 - NICHROME_ENABLE
