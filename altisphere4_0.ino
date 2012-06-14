@@ -1,10 +1,14 @@
+#include <SD.h>
+#include <Servo.h>
+#include <TinyGPS.h>
+#include <SoftwareSerial.h>
 // ___________________________
 //|        Ben Oxley          |
 //|AltiSphere Pre Release Code|
 //|___________________________|
 //Must initalise some variables on day of flight, may not work over midnight
 
-//FIX: The release notes includes a handy pre-compiler directive to check of the arduino flavor you are using.
+//FIX: The release notes includes a handy pre-compiler directive to check of the arduino flavour you are using.
 
 #if defined(ARDUINO) && ARDUINO >= 100
 #include <Arduino.h>
@@ -13,28 +17,46 @@
 #endif
 
 /*
- Output  0 - RXI                        Output  7 - SERVO DATA
- Output  1 - TXO                        Output  8 - DRIVE ENABLE COMMS
- Output  2 - N/C                        Output  9 - DRIVE COMMS
- Output  3 - N/C                        Output 10 - N/C
- Output  4 - MOSFET ON                  Output 11 - MOSI
- Output  5 - NOT RECEIEVE ENABLE COMMS  Output 12 - MISO
- Output  6 - RECIEVE COMMS              Output 13 - SCK
+ Output  0 - GPS_RXD          Output  7 - NICHROME_ENABLE
+ Output  1 - GPS_TXD          Output  8 - SERVO_ENABLE 
+ Output  2 - SERVO DATA       Output  9 - NOT LDO_ENABLE
+ Output  3 - RADIO_TXD        Output 10 - SD_CS
+ Output  4 - RADIO_ENABLE     Output 11 - MOSI
+ Output  5 - GPS_TIMEPULSE    Output 12 - MISO
+ Output  6 - N/C              Output 13 - SCK
+ 
+*/
+#define P_GPS_RXD 0
+#define P_GPS_TXD 1
+#define P_SERVO_DATA 2
+#define P_RADIO_TXD 3
+#define P_RADIO_EN 4
+#define P_GPS_TIMEPULSE 5
+#define P_CUTDOWN 7
+#define P_SERVO_EN 8
+#define P_LDO_EN 9
+#define P_SD_CS 10
+#define P_MOSI 11
+#define P_MISO 12
+#define P_SCK 13
+
+/*
  
  Servo Goes between 18 and 90 Degrees
  
- Analog 0 - N/C
- Analog 1 - N/C
- Analog 2 - Pressure Sensor   Vout = VS × (0.2 × P(kPa)+0.5) ± 6.25% VFSS  Voltage is divided by two. Range 0.25-->2.25v Gives a resolution of 6 Pa (4000/(2/(3.3/1024)))
+ Analog 0 - Pressure Sensor   Vout = VS × (0.2 × P(kPa)+0.5) ± 6.25% VFSS  Voltage is divided by two. Range 0.25-->2.25v Gives a resolution of 6 Pa (4000/(2/(3.3/1024)))
+ Analog 1 - V_BATT_SERVO
+ Analog 2 - N/C
  Analog 3 - N/C
  Analog 4 - Temperature Sensors SDA
  Analog 5 - Temperature Sensors SCL
  Analog 6 - N/C
- Analog 7 - N/C 
- 
- Ideal analog divider is 10K and 27K   730, 378, 3
+ Analog 7 - V_BATT_MAIN
  */
-
+ 
+#define A_PRES A0
+#define V_SERVO A1
+#define V_MAIN A7
 /*
   GPS Level Convertor Board Test Script
  03/05/2012 2E0UPU
@@ -45,19 +67,22 @@
  Additional Code by J Coxon (http://ukhas.org.uk/guides:falcom_fsa03)
  */
 
-#include "TinyGPS.h"
+//Define GPS Objects
 TinyGPS gps;
-#include <SoftwareSerial.h>
-
 SoftwareSerial mySerial(4, 5);
-
 byte gps_set_sucess = 0 ;
 
 void setup()
 {
+  analogReference(INTERNAL); //Use internal 1.1V reference voltage
+  delay(10);
   mySerial.begin(9600);
   Serial.begin(9600);
   mySerial.println("Initialising....");
+  pinMode(P_RADIO_TXD, OUTPUT);
+  pinMode(P_RADIO_EN, OUTPUT);
+  pinMode(P_SERVO_EN, OUTPUT);
+  pinMode(P_LDO_EN, OUTPUT);
 
   // THIS COMMAND SETS FLIGHT MODE AND CONFIRMS IT 
   mySerial.println("Setting uBlox nav mode: ");
@@ -71,6 +96,7 @@ void setup()
   gps_set_sucess=0;
 
   // THE FOLLOWING COMMANDS DO WHAT THE $PUBX ONES DO BUT WITH CONFIRMATION
+  /*
   debug.println("Switching off NMEA GLL: ");
   uint8_t setGLL[] = { 
     0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0xF0, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x2B                     };
@@ -117,32 +143,23 @@ void setup()
     gps_set_sucess=getUBX_ACK(setVTG);
 
   }
-
+  */
 
 }
-void loop()
-{
-  while (nss.available())
-  {
-    int c = nss.read();
 
-  }
-}
 
 void loop()
 {
-  Serial.println("$PUBX,00*33");
+  //Serial.println("$PUBX,00*33");
   if(Serial.available() > 0) 
   {
-    char inByte = Serial.read();
+    int inByte = Serial.read();
     mySerial.write(inByte);
+    if (gps.encode(inByte))
+    {
+      // process new gps info here
+    }
   }
-  if (gps.encode(c))
-  {
-    // process new gps info here
-  }
-
-
 }     
 // Send a byte array of UBX protocol to the GPS
 void sendUBX(uint8_t *MSG, uint8_t len) {
@@ -211,4 +228,21 @@ boolean getUBX_ACK(uint8_t *MSG) {
     }
   }
 }
+
+int readTemperature()
+{
+  ADCSRA |= _BV(ADSC); // start the conversion
+  while (bit_is_set(ADCSRA, ADSC)); // ADSC is cleared when the conversion finishes
+  return (ADCL | (ADCH << 8)) - 342; // combine bytes & correct for temp offset (approximate)}
+}
+
+float averageTemperature()
+{
+  readTemperature(); // discard first sample (never hurts to be safe)
+  float averageTemp; // create a float to hold running average
+  for (int i = 1; i < 100; i++) // start at 1 so we dont divide by 0
+    averageTemp += ((readTemperature() - averageTemp)/(float)i); // get next sample, calculate running average
+
+  return averageTemp; // return average temperature reading
+} 
 
