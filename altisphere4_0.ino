@@ -1,3 +1,5 @@
+
+
 // ___________________________
 //|        Ben Oxley          |
 //|AltiSphere Pre Release Code|
@@ -17,6 +19,10 @@
 #include <Servo.h>
 #include <TinyGPS.h>
 #include <SoftwareSerial.h>
+#include <Wire.h>
+#include <Time.h>
+
+
 
 
 /*
@@ -75,6 +81,9 @@ TinyGPS gps;
 SoftwareSerial mySerial(4, 5);
 byte gps_set_sucess = 0 ;
 
+Servo vservo;
+int servo_pos = 90;    // variable to read the value from the analog pin 
+
 void setup()
 {
   analogReference(INTERNAL); //Use internal 1.1V reference voltage
@@ -86,6 +95,9 @@ void setup()
   pinMode(P_RADIO_EN, OUTPUT);
   pinMode(P_SERVO_EN, OUTPUT);
   pinMode(P_LDO_EN, OUTPUT);
+  vservo.attach(P_SERVO_DATA);          // attaches the servo on pin 9 to the servo object 
+  vservo.write(servo_pos);                  // sets the servo position according to the scaled value 
+  delay(15);                           // waits for the servo to get there 
 
   // THIS COMMAND SETS FLIGHT MODE AND CONFIRMS IT 
   mySerial.println("Setting uBlox nav mode: ");
@@ -248,4 +260,23 @@ float averageTemperature()
 
   return averageTemp; // return average temperature reading
 } 
+
+int extTemperature()
+{
+  Wire.begin();        // join i2c bus (address optional for master)
+  Serial.begin(9600);  // start serial for output
+  Wire.requestFrom(2, 1);    // request 6 bytes from slave device #2
+  while(Wire.available())    // slave may send less than requested
+  { 
+    char c = Wire.read(); // receive a byte as character
+    return c;         // print the character
+  }
+  
+  delay(500);
+}
+
+void checkmem()
+{
+ mySerial.println( freeMemory() );
+}
 
