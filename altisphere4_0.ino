@@ -18,8 +18,13 @@
 #include <TinyGPS.h>
 #include <SoftwareSerial.h>
 #include <Wire.h>
-#include <Time.h>
+//#include <Time.h>
+#include <WString.h> //
+#include <ctype.h> 
 #include <util/crc16.h> //Includes for crc16 cyclic redundancy check to validate serial comms
+#include <stdio.h>
+#include <stdlib.h>
+#include <Arduino.h>
 
 /*
  Output  0 - GPS_RXD          Output  7 - NICHROME_ENABLE
@@ -85,11 +90,17 @@ boolean haslaunched = false;
 
 long lat, lon;
 unsigned long fix_age, time, date, speed, course, alt;
+int years;
+byte months, days, hour, minutes, second, hundredths;
+
+unsigned int packetNum = 1;
+
 
 //Speed Variables
 float speedarray[20]; //Declare array to store speed values to create moving average
 int floatindex; //Declare the current place in the speedarray[]
 int timelast; //Initialise time of last valid recieved packet
+int lastservomove;
 float altlast; //Initialise last recorded altitude variable
 #define MOVINGAVG 10//Define size of moving average
 
@@ -100,6 +111,11 @@ int flightalt[] = {
   0,5000,10000,15000,20000,30000}; //Initialise variable array for altitude control points
 int flightspd[] = {
   100,5,4,2,2,2}; //Initialise variable array for controlled speeds in m/s
+  
+  
+char packet[100];
+
+uint16_t crc;
 
 void setup()
 {
@@ -195,6 +211,8 @@ void sendUBX(uint8_t *MSG, uint8_t len) {
 void getgps() {
   gps.get_position(&lat, &lon, &fix_age);
   alt = gps.altitude();
+  gps.crack_datetime(&years, &months, &days,
+  &hour, &minutes, &second, &hundredths, &fix_age);
 }
 
 void valvecontrol() 
@@ -224,12 +242,14 @@ void valvecontrol()
   }
   } else if(alt > 500) {
       haslaunched = true;
+  } else if(millis() - lastservomove > 10000) {
+    servopos(servoClosed);
   }
 
 }
 
 void servopos(int pos) {
-  //digitalWrite(4,HIGH); //Turn the MOSFET on
+  digitalWrite(P_SERVO_EN,HIGH); //Turn the MOSFET on
   int x = 0;
   if (pos != lastservopos) //If the desired servo position has changed
     if (pos >= lastservopos) //If the servo position has increased
@@ -248,7 +268,7 @@ void servopos(int pos) {
       delay(10);
     }
   }
-  //digitalWrite(4,LOW); //Turn the MOSFET off
+  digitalWrite(P_SERVO_EN,LOW); //Turn the MOSFET off
   lastservopos = pos; // write the new servo position to the register
 }
   
@@ -402,5 +422,12 @@ void serialEvent(){
   gps.encode(Serial.read());
 }
 
+void transmit(){
+  int result = sprintf(packet,"UUUU$$ALTI,%u,%u:%u:%u,%f,%f,%u*",packetNum,hour,minutes,second,lat,lon,alt);
+  crc = (CRC16(&packet[6]));
+  result = sprintf(&packet[result],"%04X\n",crc);
+  //set timers
+  //return
+}
 
 
