@@ -181,16 +181,7 @@ void setup()
 
 void loop()
 {
-  //Serial.println("$PUBX,00*33");
-  if(Serial.available() > 0) 
-  {
-    int inByte = Serial.read();
-    mySerial.write(inByte);
-    if (gps.encode(inByte))
-    {
-      // process new gps info here
-    }
-  }
+
 }     
 // Send a byte array of UBX protocol to the GPS
 void sendUBX(uint8_t *MSG, uint8_t len) {
@@ -343,6 +334,7 @@ void checkmem()
  mySerial.println( freeMemory() );
 }
 
+//from http://bildr.org/2011/01/tmp102-arduino/
 float getextTemperature(){
   Wire.begin();
   delay(10);
@@ -404,6 +396,10 @@ float flightplan(){
     }
   }
   return targetspeed; //returns the target speed to the calling function
+}
+
+void serialEvent(){
+  gps.encode(Serial.read());
 }
 
 
