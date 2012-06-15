@@ -1,5 +1,3 @@
-
-
 // ___________________________
 //|        Ben Oxley          |
 //|AltiSphere Pre Release Code|
@@ -21,9 +19,7 @@
 #include <SoftwareSerial.h>
 #include <Wire.h>
 #include <Time.h>
-
-
-
+#include <util/crc16.h> //Includes for crc16 cyclic redundancy check to validate serial comms
 
 /*
  Output  0 - GPS_RXD          Output  7 - NICHROME_ENABLE
@@ -33,7 +29,6 @@
  Output  4 - RADIO_ENABLE     Output 11 - MOSI
  Output  5 - GPS_TIMEPULSE    Output 12 - MISO
  Output  6 - N/C              Output 13 - SCK
- 
 */
 #define P_GPS_RXD 0
 #define P_GPS_TXD 1
@@ -48,9 +43,7 @@
 #define P_MOSI 11
 #define P_MISO 12
 #define P_SCK 13
-
 /*
- 
  Servo Goes between 18 and 90 Degrees
  
  Analog 0 - Pressure Sensor   Vout = VS × (0.2 × P(kPa)+0.5) ± 6.25% VFSS  Voltage is divided by two. Range 0.25-->2.25v Gives a resolution of 6 Pa (4000/(2/(3.3/1024)))
@@ -62,7 +55,6 @@
  Analog 6 - N/C
  Analog 7 - V_BATT_MAIN
  */
- 
 #define A_PRES A0
 #define V_SERVO A1
 #define V_MAIN A7
@@ -74,15 +66,40 @@
  
  This example code is in the public domain.
  Additional Code by J Coxon (http://ukhas.org.uk/guides:falcom_fsa03)
- */
+*/
 
 //Define GPS Objects
 TinyGPS gps;
 SoftwareSerial mySerial(4, 5);
 byte gps_set_sucess = 0 ;
 
-Servo vservo;
-int servo_pos = 90;    // variable to read the value from the analog pin 
+//Servo Settings
+#define servoOpen 100 //Servo open position
+#define servoClosed 10 //Servo closed position
+Servo vservo; //Create servo object for valve servo
+int lastservopos = 90; //Integer to store the last given position of the servo
+
+int tmp102Address = 0x48;
+
+boolean haslaunched = false;
+
+long lat, lon;
+unsigned long fix_age, time, date, speed, course, alt;
+
+//Speed Variables
+float speedarray[20]; //Declare array to store speed values to create moving average
+int floatindex; //Declare the current place in the speedarray[]
+int timelast; //Initialise time of last valid recieved packet
+float altlast; //Initialise last recorded altitude variable
+#define MOVINGAVG 10//Define size of moving average
+
+//Pre-Flight Variables
+#define datenow "220412" //Define date today (DDMMYY)
+#define arraysize 6 //Define size of flight altitude array
+int flightalt[] = {
+  0,5000,10000,15000,20000,30000}; //Initialise variable array for altitude control points
+int flightspd[] = {
+  100,5,4,2,2,2}; //Initialise variable array for controlled speeds in m/s
 
 void setup()
 {
@@ -96,7 +113,7 @@ void setup()
   pinMode(P_SERVO_EN, OUTPUT);
   pinMode(P_LDO_EN, OUTPUT);
   vservo.attach(P_SERVO_DATA);          // attaches the servo on pin 9 to the servo object 
-  vservo.write(servo_pos);                  // sets the servo position according to the scaled value 
+  vservo.write(servoClosed);                  // sets the servo position according to the scaled value 
   delay(15);                           // waits for the servo to get there 
 
   // THIS COMMAND SETS FLIGHT MODE AND CONFIRMS IT 
@@ -159,7 +176,6 @@ void setup()
 
   }
   */
-
 }
 
 
@@ -184,6 +200,67 @@ void sendUBX(uint8_t *MSG, uint8_t len) {
   }
   Serial.println();
 }
+
+void getgps() {
+  gps.get_position(&lat, &lon, &fix_age);
+  alt = gps.altitude();
+}
+
+void valvecontrol() 
+{
+  if (haslaunched) {
+      if (fix_age < 3600000) { //If the last GPS lock was less than an hour ago
+    if ((lat < 5223) && (lon < 20) && (lon > 1)) {
+      if ((fix_age > 60000) && (speedavg() > 1))
+      {
+        servopos(servoClosed);
+      } 
+      else {
+        if (speedavg() > flightplan())
+        {
+          servopos(servoOpen);
+        } else {
+          servopos(servoClosed);
+        }   
+      }
+    } 
+    else {
+      servopos(servoOpen);
+    }
+  } 
+  else { 
+    servopos(servoOpen); //open the valve to dump helium
+  }
+  } else if(alt > 500) {
+      haslaunched = true;
+  }
+
+}
+
+void servopos(int pos) {
+  //digitalWrite(4,HIGH); //Turn the MOSFET on
+  int x = 0;
+  if (pos != lastservopos) //If the desired servo position has changed
+    if (pos >= lastservopos) //If the servo position has increased
+    {
+      for (x = lastservopos; x <= pos; x++) //Slowly increase the servo's position
+      {
+        vservo.write(x);
+        delay(10);
+      }
+    }
+    else //Else the servo position has decreased
+  {
+    for (x = lastservopos; x >= pos; x--) //Slowly decrease the servo's position
+    {
+      vservo.write(x);
+      delay(10);
+    }
+  }
+  //digitalWrite(4,LOW); //Turn the MOSFET off
+  lastservopos = pos; // write the new servo position to the register
+}
+  
 
 
 // Calculate expected UBX ACK packet and parse UBX response from GPS
@@ -261,22 +338,73 @@ float averageTemperature()
   return averageTemp; // return average temperature reading
 } 
 
-int extTemperature()
-{
-  Wire.begin();        // join i2c bus (address optional for master)
-  Serial.begin(9600);  // start serial for output
-  Wire.requestFrom(2, 1);    // request 6 bytes from slave device #2
-  while(Wire.available())    // slave may send less than requested
-  { 
-    char c = Wire.read(); // receive a byte as character
-    return c;         // print the character
-  }
-  
-  delay(500);
-}
-
 void checkmem()
 {
  mySerial.println( freeMemory() );
 }
+
+float getextTemperature(){
+  Wire.begin();
+  delay(10);
+  Wire.requestFrom(tmp102Address,2); 
+
+  byte MSB = Wire.read();
+  byte LSB = Wire.read();
+
+  //it's a 12bit int, using two's compliment for negative
+  int TemperatureSum = ((MSB << 8) | LSB) >> 4; 
+
+  float celsius = TemperatureSum*0.0625;
+  return celsius;
+}
+
+
+//******************************************
+//Program to calculate the speed based on a
+//moving average array.
+//******************************************
+float speedavg(){
+  float speedcalc; //initalise float for speed
+  for (int i = 0; i <= MOVINGAVG ; i++) { //loop through the values to add together
+    if ((floatindex - i) < 0) { // if the index drops off the bottom of the array
+      speedcalc += speedarray[ 20 - i + floatindex ]; // look at values decreasing from 99
+    } 
+    else {
+      speedcalc +=speedarray[floatindex - i];
+    }
+  }
+  speedcalc /= MOVINGAVG ; //divide by the amount of values added together
+  return speedcalc; //return the value
+}
+
+//******************************************
+//Program to verify the CRC check of the
+//form CRC-CCITT. the program breaks when it
+//finds * or \0
+//******************************************
+uint16_t CRC16 (char *c)
+{
+  uint16_t crc = 0xFFFF;
+  while (*c && *c != '*') crc = _crc_xmodem_update(crc, *c++);
+  return crc;
+}
+
+//******************************************
+//Check flightspeed that is relevant to the
+//current altitude. Needs an extended
+//function to be written for descent.
+//******************************************
+float flightplan(){
+  float targetspeed;
+  for (int i = 0; i < arraysize; i++) //lookup which array element relates to the current altitude
+  {
+    if ( flightalt[i] <= alt) 
+    {
+      targetspeed = flightspd[i]; //looks up the target speed for this altitude
+    }
+  }
+  return targetspeed; //returns the target speed to the calling function
+}
+
+
 
