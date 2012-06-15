@@ -19,12 +19,12 @@
 #include <SoftwareSerial.h>
 #include <Wire.h>
 //#include <Time.h>
-#include <WString.h> //
-#include <ctype.h> 
+//#include <WString.h> //
+//#include <ctype.h> 
 #include <util/crc16.h> //Includes for crc16 cyclic redundancy check to validate serial comms
-#include <stdio.h>
-#include <stdlib.h>
-#include <Arduino.h>
+//#include <stdio.h>
+//#include <stdlib.h>
+//#include <Arduino.h>
 
 /*
  Output  0 - GPS_RXD          Output  7 - NICHROME_ENABLE
@@ -34,7 +34,7 @@
  Output  4 - RADIO_ENABLE     Output 11 - MOSI
  Output  5 - GPS_TIMEPULSE    Output 12 - MISO
  Output  6 - N/C              Output 13 - SCK
-*/
+ */
 #define P_GPS_RXD 0
 #define P_GPS_TXD 1
 #define P_SERVO_DATA 2
@@ -71,7 +71,7 @@
  
  This example code is in the public domain.
  Additional Code by J Coxon (http://ukhas.org.uk/guides:falcom_fsa03)
-*/
+ */
 
 //Define GPS Objects
 TinyGPS gps;
@@ -111,11 +111,17 @@ int flightalt[] = {
   0,5000,10000,15000,20000,30000}; //Initialise variable array for altitude control points
 int flightspd[] = {
   100,5,4,2,2,2}; //Initialise variable array for controlled speeds in m/s
-  
-  
+
+
 char packet[100];
 
 uint16_t crc;
+
+//Pressure Sensor Variables
+int sensorValue; //Integer value for ADC reading from pressure sensor
+int pressure; //Integer value for pressure given by the mapping formula below
+
+boolean cardavailable;
 
 void setup()
 {
@@ -128,6 +134,16 @@ void setup()
   pinMode(P_RADIO_EN, OUTPUT);
   pinMode(P_SERVO_EN, OUTPUT);
   pinMode(P_LDO_EN, OUTPUT);
+  pinMode(P_SD_CS, OUTPUT);
+  // see if the card is present and can be initialized:
+  if (!SD.begin(P_SD_CS)) {
+    mySerial.println("Card failed, or not present");
+    cardavailable = false;
+    // don't do anything more:
+  } else {
+  mySerial.println("card initialized.");
+  cardavailable = true;
+  }
   vservo.attach(P_SERVO_DATA);          // attaches the servo on pin 9 to the servo object 
   vservo.write(servoClosed);                  // sets the servo position according to the scaled value 
   delay(15);                           // waits for the servo to get there 
@@ -135,7 +151,7 @@ void setup()
   // THIS COMMAND SETS FLIGHT MODE AND CONFIRMS IT 
   mySerial.println("Setting uBlox nav mode: ");
   uint8_t setNav[] = {
-    0xB5, 0x62, 0x06, 0x24, 0x24, 0x00, 0xFF, 0xFF, 0x06, 0x03, 0x00, 0x00, 0x00, 0x00, 0x10, 0x27, 0x00, 0x00, 0x05, 0x00, 0xFA, 0x00, 0xFA, 0x00, 0x64, 0x00, 0x2C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0xDC                        };
+    0xB5, 0x62, 0x06, 0x24, 0x24, 0x00, 0xFF, 0xFF, 0x06, 0x03, 0x00, 0x00, 0x00, 0x00, 0x10, 0x27, 0x00, 0x00, 0x05, 0x00, 0xFA, 0x00, 0xFA, 0x00, 0x64, 0x00, 0x2C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0xDC                          };
   while(!gps_set_sucess)
   {
     sendUBX(setNav, sizeof(setNav)/sizeof(uint8_t));
@@ -146,52 +162,52 @@ void setup()
   // THE FOLLOWING COMMANDS DO WHAT THE $PUBX ONES DO BUT WITH CONFIRMATION
   /*
   debug.println("Switching off NMEA GLL: ");
-  uint8_t setGLL[] = { 
-    0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0xF0, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x2B                     };
-  while(!gps_set_sucess)
-  {		
-    sendUBX(setGLL, sizeof(setGLL)/sizeof(uint8_t));
-    gps_set_sucess=getUBX_ACK(setGLL);
-  }
-  gps_set_sucess=0;
-
-  debug.println("Switching off NMEA GSA: ");
-  uint8_t setGSA[] = { 
-    0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0xF0, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x32                     };
-  while(!gps_set_sucess)
-  {	
-    sendUBX(setGSA, sizeof(setGSA)/sizeof(uint8_t));
-    gps_set_sucess=getUBX_ACK(setGSA);
-  }
-  gps_set_sucess=0;
-  debug.println("Switching off NMEA GSV: ");
-  uint8_t setGSV[] = { 
-    0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0xF0, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x03, 0x39                     };
-  while(!gps_set_sucess)
-  {
-    sendUBX(setGSV, sizeof(setGSV)/sizeof(uint8_t));
-    gps_set_sucess=getUBX_ACK(setGSV);
-  }
-  gps_set_sucess=0;
-  debug.print("Switching off NMEA RMC: ");
-  uint8_t setRMC[] = { 
-    0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0xF0, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x04, 0x40                     };
-  while(!gps_set_sucess)
-  {
-    sendUBX(setRMC, sizeof(setRMC)/sizeof(uint8_t));
-    gps_set_sucess=getUBX_ACK(setRMC);
-  }
-  gps_set_sucess=0;
-  debug.print("Switching off NMEA VTG: ");
-  uint8_t setVTG[] = { 
-    0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0xF0, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x46                     };
-  while(!gps_set_sucess)
-  {
-    sendUBX(setVTG, sizeof(setRMC)/sizeof(uint8_t));
-    gps_set_sucess=getUBX_ACK(setVTG);
-
-  }
-  */
+   uint8_t setGLL[] = { 
+   0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0xF0, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x2B                     };
+   while(!gps_set_sucess)
+   {		
+   sendUBX(setGLL, sizeof(setGLL)/sizeof(uint8_t));
+   gps_set_sucess=getUBX_ACK(setGLL);
+   }
+   gps_set_sucess=0;
+   
+   debug.println("Switching off NMEA GSA: ");
+   uint8_t setGSA[] = { 
+   0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0xF0, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x32                     };
+   while(!gps_set_sucess)
+   {	
+   sendUBX(setGSA, sizeof(setGSA)/sizeof(uint8_t));
+   gps_set_sucess=getUBX_ACK(setGSA);
+   }
+   gps_set_sucess=0;
+   debug.println("Switching off NMEA GSV: ");
+   uint8_t setGSV[] = { 
+   0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0xF0, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x03, 0x39                     };
+   while(!gps_set_sucess)
+   {
+   sendUBX(setGSV, sizeof(setGSV)/sizeof(uint8_t));
+   gps_set_sucess=getUBX_ACK(setGSV);
+   }
+   gps_set_sucess=0;
+   debug.print("Switching off NMEA RMC: ");
+   uint8_t setRMC[] = { 
+   0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0xF0, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x04, 0x40                     };
+   while(!gps_set_sucess)
+   {
+   sendUBX(setRMC, sizeof(setRMC)/sizeof(uint8_t));
+   gps_set_sucess=getUBX_ACK(setRMC);
+   }
+   gps_set_sucess=0;
+   debug.print("Switching off NMEA VTG: ");
+   uint8_t setVTG[] = { 
+   0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0xF0, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x46                     };
+   while(!gps_set_sucess)
+   {
+   sendUBX(setVTG, sizeof(setRMC)/sizeof(uint8_t));
+   gps_set_sucess=getUBX_ACK(setVTG);
+   
+   }
+   */
 }
 
 
@@ -218,31 +234,34 @@ void getgps() {
 void valvecontrol() 
 {
   if (haslaunched) {
-      if (fix_age < 3600000) { //If the last GPS lock was less than an hour ago
-    if ((lat < 5223) && (lon < 20) && (lon > 1)) {
-      if ((fix_age > 60000) && (speedavg() > 1))
-      {
-        servopos(servoClosed);
+    if (fix_age < 3600000) { //If the last GPS lock was less than an hour ago
+      if ((lat < 5223) && (lon < 20) && (lon > 1)) {
+        if ((fix_age > 60000) && (speedavg() > 1))
+        {
+          servopos(servoClosed);
+        } 
+        else {
+          if (speedavg() > flightplan())
+          {
+            servopos(servoOpen);
+          } 
+          else {
+            servopos(servoClosed);
+          }   
+        }
       } 
       else {
-        if (speedavg() > flightplan())
-        {
-          servopos(servoOpen);
-        } else {
-          servopos(servoClosed);
-        }   
+        servopos(servoOpen);
       }
     } 
-    else {
-      servopos(servoOpen);
+    else { 
+      servopos(servoOpen); //open the valve to dump helium
     }
   } 
-  else { 
-    servopos(servoOpen); //open the valve to dump helium
-  }
-  } else if(alt > 500) {
-      haslaunched = true;
-  } else if(millis() - lastservomove > 10000) {
+  else if(alt > 500) {
+    haslaunched = true;
+  } 
+  else if(millis() - lastservomove > 10000) {
     servopos(servoClosed);
   }
 
@@ -271,7 +290,7 @@ void servopos(int pos) {
   digitalWrite(P_SERVO_EN,LOW); //Turn the MOSFET off
   lastservopos = pos; // write the new servo position to the register
 }
-  
+
 
 
 // Calculate expected UBX ACK packet and parse UBX response from GPS
@@ -351,7 +370,7 @@ float averageTemperature()
 
 void checkmem()
 {
- mySerial.println( freeMemory() );
+  mySerial.println( freeMemory() );
 }
 
 //from http://bildr.org/2011/01/tmp102-arduino/
@@ -428,6 +447,60 @@ void transmit(){
   result = sprintf(&packet[result],"%04X\n",crc);
   //set timers
   //return
+}
+
+void readpressure() {
+  sensorValue = analogRead(A2);
+  pressure = map(sensorValue, 0, 730, -2000, 2000);  //Map ADC to pressure
+}
+
+//******************************************
+//Sends string of values to the openLog sys
+//-tem. 
+//******************************************
+void logit() {
+  char temp[10];
+  if (cardavailable) {
+    File dataFile = SD.open("datalog.txt", FILE_WRITE);
+    if (dataFile) {
+    dataFile.println(packet);
+    dataFile.close();
+    // print to the serial port too:
+  }  
+  // if the file isn't open, pop up an error:
+  else {
+    mySerial.println("error opening datalog.txt");
+  } 
+  
+  //int timenow = millis();
+  }
+
+
+  // Openlog version
+  /*
+  Serial.print("Since On,");
+   Serial.print(millis());
+   Serial.print(",Time,");
+   sprintf(temp,"%u:%u:%u",hour,minutes,second);
+   Serial.print(temp);
+   Serial.print(",Lat,");
+   Serial.print(lat);
+   Serial.print(",Long,");
+   Serial.print(lon);
+   Serial.print(",Alt,");
+   Serial.print(alt);
+   Serial.print(",Checksum,");
+   Serial.print(crc);
+   Serial.print(",Speed,");
+   Serial.print(speedavg());
+   Serial.print(",Raw Pressure,");
+   Serial.print(sensorValue,DEC);
+   Serial.print(",Adjusted Pressure,");
+   Serial.print(pressure,DEC);
+   Serial.print(",Last Servo Position,");
+   Serial.print(lastservopos,DEC);
+   Serial.print("\n");
+   */
 }
 
 
