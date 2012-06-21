@@ -129,12 +129,15 @@ void setup()
   delay(10);
   mySerial.begin(9600);
   Serial.begin(9600);
+  Serial.println("Initialising....");
   mySerial.println("Initialising....");
   pinMode(P_RADIO_TXD, OUTPUT);
   pinMode(P_RADIO_EN, OUTPUT);
   pinMode(P_SERVO_EN, OUTPUT);
   pinMode(P_LDO_EN, OUTPUT);
   pinMode(P_SD_CS, OUTPUT);
+  digitalWrite(P_RADIO_EN,LOW);
+  digitalWrite(P_LDO_EN,HIGH);
   // see if the card is present and can be initialized:
   if (!SD.begin(P_SD_CS)) {
     mySerial.println("Card failed, or not present");
@@ -147,7 +150,7 @@ void setup()
   vservo.attach(P_SERVO_DATA);          // attaches the servo on pin 9 to the servo object 
   vservo.write(servoClosed);                  // sets the servo position according to the scaled value 
   delay(15);                           // waits for the servo to get there 
-
+/*
   // THIS COMMAND SETS FLIGHT MODE AND CONFIRMS IT 
   mySerial.println("Setting uBlox nav mode: ");
   uint8_t setNav[] = {
@@ -158,7 +161,7 @@ void setup()
     gps_set_sucess=getUBX_ACK(setNav);
   }
   gps_set_sucess=0;
-
+*/
   // THE FOLLOWING COMMANDS DO WHAT THE $PUBX ONES DO BUT WITH CONFIRMATION
   /*
   debug.println("Switching off NMEA GLL: ");
@@ -213,7 +216,13 @@ void setup()
 
 void loop()
 {
-
+  /*
+  digitalWrite(P_RADIO_EN,HIGH);
+  getgps();
+  readpressure();
+  transmit();
+  delay(1000);
+  */
 }     
 // Send a byte array of UBX protocol to the GPS
 void sendUBX(uint8_t *MSG, uint8_t len) {
@@ -442,9 +451,13 @@ void serialEvent(){
 }
 
 void transmit(){
-  int result = sprintf(packet,"UUUU$$ALTI,%u,%u:%u:%u,%f,%f,%u*",packetNum,hour,minutes,second,lat,lon,alt);
-  crc = (CRC16(&packet[6]));
+
+  int result = sprintf(packet,"$$ALTI,%u,%u:%u:%u,%f,%f,%u,%u,%u*",packetNum,hour,minutes,second,lat,lon,alt,pressure,averageTemperature());
+  crc = (CRC16(&packet[3]));
   result = sprintf(&packet[result],"%04X\n",crc);
+  delay(1000);
+  rtty_preamble(1);
+  rtty_tx(packet,1);
   //set timers
   //return
 }
@@ -501,6 +514,97 @@ void logit() {
    Serial.print(lastservopos,DEC);
    Serial.print("\n");
    */
+}
+
+void rtty_tx(char* sentence, int baud)
+{
+    // Disable interrupts
+    noInterrupts();
+
+    int i=0;
+    while(sentence[i] != 0)
+    {
+        rtty_tx_byte(sentence[i], baud);
+        i++;
+    }
+
+    // Re-enable interrupts
+    interrupts();
+}
+
+void rtty_preamble(int baud)
+{
+    char sentence[] = "UUUUUUUUUUUUUUUUUUUUUU\r\n";
+
+    // Disable interrupts
+    noInterrupts();
+
+    int i=0;
+    while(sentence[i] != 0)
+    {
+        rtty_tx_byte(sentence[i], baud);
+        i++;
+    }
+
+    // Re-enable interrupts
+    interrupts();
+}
+
+void rtty_tx_byte(char c, int baud)
+{
+    // Start bit
+    rtty_tx_bit(0, baud);
+
+    // Send byte
+    for(int b=0; b<8; b++)
+    {
+        if(c & 1)
+        {
+            rtty_tx_bit(1, baud);
+        }
+        else
+        {
+            rtty_tx_bit(0, baud);
+        }
+
+        c = c >> 1;
+    }
+
+    // 2 Stop bits
+    rtty_tx_bit(1, baud);
+    rtty_tx_bit(1, baud);
+}
+
+void rtty_tx_bit(int b, int baud)
+{
+    if(b)
+    {
+        // If HIGH
+        digitalWrite(P_RADIO_TXD,HIGH);
+    }
+    else
+    {
+        // If LOW
+        digitalWrite(P_RADIO_TXD,LOW);      
+    }
+
+    if(baud == 1)
+    {
+        // 300 baud
+        delayMicroseconds(3370);
+    }
+    else if(baud == 0)
+    {
+        // 50 baud
+        delayMicroseconds(10000);
+        delayMicroseconds(10150);
+    }
+    else
+    {
+        // Otherwise default to 50 baud
+        delayMicroseconds(10000);
+        delayMicroseconds(10150);
+    }
 }
 
 
