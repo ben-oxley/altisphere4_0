@@ -31,7 +31,7 @@
 #include <SD.h>
 #include <Servo.h>
 #include <TinyGPS.h>
-#include <SoftwareSerial.h>
+//#include <SoftwareSerial.h>
 #include <Wire.h>
 //#include <Time.h>
 //#include <WString.h> //
@@ -90,7 +90,7 @@
 
 //Define GPS Objects
 TinyGPS gps;
-SoftwareSerial mySerial(4, 5);
+//SoftwareSerial mySerial(4, 5);
 byte gps_set_sucess = 0 ;
 
 //Servo Settings
@@ -142,7 +142,7 @@ void setup()
 {
   analogReference(INTERNAL); //Use internal 1.1V reference voltage
   delay(10);
-  mySerial.begin(9600);
+  //mySerial.begin(9600);
   Serial.begin(38400);
   DEBUG_PRINTLN("Initialising....");
   pinMode(P_RADIO_TXD, OUTPUT);
@@ -251,10 +251,20 @@ void sendUBX(uint8_t *MSG, uint8_t len) {
 }
 
 void getgps() {
-  gps.get_position(&lat, &lon, &fix_age);
-  alt = gps.altitude();
-  gps.crack_datetime(&years, &months, &days,
-  &hour, &minutes, &second, &hundredths, &fix_age);
+  Serial.println("$PUBX,00*33");
+  while (Serial.available())
+  {
+    int c = Serial.read();
+    DEBUG_WRITE(c); 
+    if (gps.encode(c))
+    {
+      gps.get_position(&lat, &lon, &fix_age);
+      alt = gps.altitude();
+      gps.crack_datetime(&years, &months, &days,
+      &hour, &minutes, &second, &hundredths, &fix_age);
+      DEBUG_PRINTLN();
+    }
+  }
 }
 
 void valvecontrol() 
@@ -469,7 +479,7 @@ float flightplan(){
 
 void transmit(){
 
-  int result = sprintf(packet,"$$ALTI,%u,%u:%u:%u,%f,%f,%u,%u,%u*",packetNum,hour,minutes,second,lat,lon,alt,pressure,averageTemperature());
+  int result = sprintf(packet,"$$ALTI,%u,%u:%u:%u,%li,%li,%d,%d,%d *",packetNum,hour,minutes,second,lat,lon,alt,pressure,averageTemperature());
   crc = (CRC16(&packet[3]));
   result = sprintf(&packet[result],"%04X\n",crc);
   delay(1000);
@@ -536,7 +546,7 @@ void logit() {
 void rtty_tx(char* sentence, int baud)
 {
     // Disable interrupts
-    noInterrupts();
+    //noInterrupts();
 
     int i=0;
     while(sentence[i] != 0)
@@ -546,7 +556,7 @@ void rtty_tx(char* sentence, int baud)
     }
 
     // Re-enable interrupts
-    interrupts();
+    //interrupts();
 }
 
 void rtty_preamble(int baud)
@@ -554,7 +564,7 @@ void rtty_preamble(int baud)
     char sentence[] = "UUUUUUUUUUUUUUUUUUUUUU\r\n";
 
     // Disable interrupts
-    noInterrupts();
+    //noInterrupts();
 
     int i=0;
     while(sentence[i] != 0)
@@ -564,7 +574,7 @@ void rtty_preamble(int baud)
     }
 
     // Re-enable interrupts
-    interrupts();
+    //interrupts();
 }
 
 void rtty_tx_byte(char c, int baud)
@@ -622,22 +632,6 @@ void rtty_tx_bit(int b, int baud)
         delayMicroseconds(10000);
         delayMicroseconds(10150);
     }
-}
-
-void serialEvent(){
-while (Serial.available())
-  {
-    int c = Serial.read();
-    DEBUG_WRITE(c); 
-    if (gps.encode(c))
-    {
-      gps.get_position(&lat, &lon, &fix_age);
-      alt = gps.altitude();
-      gps.crack_datetime(&years, &months, &days,
-      &hour, &minutes, &second, &hundredths, &fix_age);
-      DEBUG_PRINTLN();
-    }
-  }
 }
 
 
