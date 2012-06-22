@@ -5,6 +5,21 @@
 //Must initalise some variables on day of flight, may not work over midnight
 
 //FIX: The release notes includes a handy pre-compiler directive to check of the arduino flavour you are using.
+//#define DEBUG
+
+#ifdef DEBUG
+  #define DEBUG_PRINT(x)     Serial.print (x)
+  #define DEBUG_PRINTDEC(x)     Serial.print (x, DEC)
+  #define DEBUG_PRINTHEX(x)  Serial.print (x,HEX)
+  #define DEBUG_PRINTLN(x)  Serial.println (x)
+  #define DEBUG_WRITE(x) Serial.write (x)
+#else
+  #define DEBUG_PRINT(x)
+  #define DEBUG_PRINTDEC(x)
+  #define DEBUG_PRINTLN(x)
+  #define DEBUG_PRINTHEX(x)
+  #define DEBUG_WRITE(x)
+#endif  
 
 #if defined(ARDUINO) && ARDUINO >= 100
 #include <Arduino.h>
@@ -128,9 +143,8 @@ void setup()
   analogReference(INTERNAL); //Use internal 1.1V reference voltage
   delay(10);
   mySerial.begin(9600);
-  Serial.begin(9600);
-  Serial.println("Initialising....");
-  mySerial.println("Initialising....");
+  Serial.begin(38400);
+  DEBUG_PRINTLN("Initialising....");
   pinMode(P_RADIO_TXD, OUTPUT);
   pinMode(P_RADIO_EN, OUTPUT);
   pinMode(P_SERVO_EN, OUTPUT);
@@ -140,11 +154,11 @@ void setup()
   digitalWrite(P_LDO_EN,HIGH);
   // see if the card is present and can be initialized:
   if (!SD.begin(P_SD_CS)) {
-    mySerial.println("Card failed, or not present");
+    DEBUG_PRINTLN("Card failed, or not present");
     cardavailable = false;
     // don't do anything more:
   } else {
-  mySerial.println("card initialized.");
+  DEBUG_PRINTLN("card initialized.");
   cardavailable = true;
   }
   vservo.attach(P_SERVO_DATA);          // attaches the servo on pin 9 to the servo object 
@@ -216,19 +230,22 @@ void setup()
 
 void loop()
 {
-  /*
   digitalWrite(P_RADIO_EN,HIGH);
   getgps();
   readpressure();
   transmit();
   delay(1000);
-  */
+  DEBUG_PRINTLN();
+  DEBUG_PRINT(lat);
+  DEBUG_PRINT(lon);
+  DEBUG_PRINTLN(alt);
+  
 }     
 // Send a byte array of UBX protocol to the GPS
 void sendUBX(uint8_t *MSG, uint8_t len) {
   for(int i=0; i<len; i++) {
     Serial.write(MSG[i]);
-    mySerial.print(MSG[i], HEX);
+    //mySerial.print(MSG[i], HEX);
   }
   Serial.println();
 }
@@ -308,7 +325,7 @@ boolean getUBX_ACK(uint8_t *MSG) {
   uint8_t ackByteID = 0;
   uint8_t ackPacket[10];
   unsigned long startTime = millis();
-  mySerial.print(" * Reading ACK response: ");
+  DEBUG_PRINTLN(" * Reading ACK response: ");
 
   // Construct the expected ACK packet    
   ackPacket[0] = 0xB5;	// header
@@ -333,13 +350,13 @@ boolean getUBX_ACK(uint8_t *MSG) {
     // Test for success
     if (ackByteID > 9) {
       // All packets in order!
-      mySerial.println(" (SUCCESS!)");
+      DEBUG_PRINTLN(" (SUCCESS!)");
       return true;
     }
 
     // Timeout if no valid response in 3 seconds
     if (millis() - startTime > 3000) { 
-      mySerial.println(" (FAILED!)");
+      DEBUG_PRINTLN(" (FAILED!)");
       return false;
     }
 
@@ -350,7 +367,7 @@ boolean getUBX_ACK(uint8_t *MSG) {
       // Check that bytes arrive in sequence as per expected ACK packet
       if (b == ackPacket[ackByteID]) { 
         ackByteID++;
-        mySerial.print(b, HEX);
+        DEBUG_PRINTHEX(b);
       } 
       else {
         ackByteID = 0;	// Reset and look again, invalid order
@@ -379,7 +396,7 @@ float averageTemperature()
 
 void checkmem()
 {
-  mySerial.println( freeMemory() );
+  DEBUG_PRINTLN( freeMemory() );
 }
 
 //from http://bildr.org/2011/01/tmp102-arduino/
@@ -446,9 +463,9 @@ float flightplan(){
   return targetspeed; //returns the target speed to the calling function
 }
 
-void serialEvent(){
-  gps.encode(Serial.read());
-}
+//void serialEvent(){
+//  gps.encode(Serial.read());
+//}
 
 void transmit(){
 
@@ -482,7 +499,7 @@ void logit() {
   }  
   // if the file isn't open, pop up an error:
   else {
-    mySerial.println("error opening datalog.txt");
+    DEBUG_PRINTLN("error opening datalog.txt");
   } 
   
   //int timenow = millis();
@@ -605,6 +622,22 @@ void rtty_tx_bit(int b, int baud)
         delayMicroseconds(10000);
         delayMicroseconds(10150);
     }
+}
+
+void serialEvent(){
+while (Serial.available())
+  {
+    int c = Serial.read();
+    DEBUG_WRITE(c); 
+    if (gps.encode(c))
+    {
+      gps.get_position(&lat, &lon, &fix_age);
+      alt = gps.altitude();
+      gps.crack_datetime(&years, &months, &days,
+      &hour, &minutes, &second, &hundredths, &fix_age);
+      DEBUG_PRINTLN();
+    }
+  }
 }
 
 
