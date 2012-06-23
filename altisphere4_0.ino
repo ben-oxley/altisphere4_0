@@ -5,7 +5,7 @@
 //Must initalise some variables on day of flight, may not work over midnight
 
 //FIX: The release notes includes a handy pre-compiler directive to check of the arduino flavour you are using.
-//#define DEBUG
+#define DEBUG
 
 #ifdef DEBUG
   #define DEBUG_PRINT(x)     Serial.print (x)
