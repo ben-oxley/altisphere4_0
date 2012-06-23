@@ -250,7 +250,23 @@ void sendUBX(uint8_t *MSG, uint8_t len) {
 }
 
 void getgps() {
-  Serial.println("$PUBX,00*33");
+  //Serial.println("$PUBX,00*33");
+  //Serial.println("$EIGPQ,RMC*3A");
+  Serial.println("$EIGPQ,GGA*27");
+  while (Serial.available())
+  {
+    int c = Serial.read();
+    DEBUG_WRITE(c); 
+    if (gps.encode(c))
+    {
+      gps.get_position(&lat, &lon, &fix_age);
+      alt = gps.altitude();
+      gps.crack_datetime(&years, &months, &days,
+      &hour, &minutes, &second, &hundredths, &fix_age);
+      DEBUG_PRINTLN();
+    }
+  }
+  Serial.println("$EIGPQ,RMC*3A");
   while (Serial.available())
   {
     int c = Serial.read();
