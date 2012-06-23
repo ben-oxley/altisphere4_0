@@ -108,7 +108,7 @@ unsigned long fix_age, time, date, speed, course, alt;
 int years;
 byte months, days, hour, minutes, second, hundredths;
 
-unsigned int packetNum = 1;
+unsigned int packetNum = 0;
 
 
 //Speed Variables
@@ -128,14 +128,12 @@ int flightspd[] = {
   100,5,4,2,2,2}; //Initialise variable array for controlled speeds in m/s
 
 
-char packet[100];
-
+char packet[120];
 uint16_t crc;
 
 //Pressure Sensor Variables
-int sensorValue; //Integer value for ADC reading from pressure sensor
+unsigned int sensorValue; //Integer value for ADC reading from pressure sensor
 int pressure; //Integer value for pressure given by the mapping formula below
-
 boolean cardavailable;
 
 void setup()
@@ -234,6 +232,7 @@ void loop()
   getgps();
   readpressure();
   transmit();
+  logit();
   delay(1000);
   DEBUG_PRINTLN();
   DEBUG_PRINT(lat);
@@ -478,8 +477,8 @@ float flightplan(){
 //}
 
 void transmit(){
-
-  int result = sprintf(packet,"$$ALTI,%u,%u:%u:%u,%li,%li,%d,%d,%d *",packetNum,hour,minutes,second,lat,lon,alt,pressure,averageTemperature());
+  packetNum++;
+  int result = sprintf(packet,"$$ALTI,%u,%u:%u:%u,%08li,%08li,%lu,%d,%d*",packetNum,hour,minutes,second,lat,lon,alt,pressure,averageTemperature());
   crc = (CRC16(&packet[3]));
   result = sprintf(&packet[result],"%04X\n",crc);
   delay(1000);
@@ -490,7 +489,7 @@ void transmit(){
 }
 
 void readpressure() {
-  sensorValue = analogRead(A2);
+  sensorValue = analogRead(A0);
   pressure = map(sensorValue, 0, 730, -2000, 2000);  //Map ADC to pressure
 }
 
@@ -504,6 +503,12 @@ void logit() {
     File dataFile = SD.open("datalog.txt", FILE_WRITE);
     if (dataFile) {
     dataFile.println(packet);
+    dataFile.print("Lat: ");
+    dataFile.print(lat);
+    dataFile.print(" Lon: ");
+    dataFile.print(lon);
+    dataFile.print(" Alt: ");
+    dataFile.println(alt);
     dataFile.close();
     // print to the serial port too:
   }  
