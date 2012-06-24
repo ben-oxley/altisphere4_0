@@ -5,7 +5,7 @@
 //Must initalise some variables on day of flight, may not work over midnight
 
 //FIX: The release notes includes a handy pre-compiler directive to check of the arduino flavour you are using.
-#define DEBUG
+//#define DEBUG
 
 #ifdef DEBUG
   #define DEBUG_PRINT(x)     Serial.print (x)
@@ -136,12 +136,15 @@ unsigned int sensorValue; //Integer value for ADC reading from pressure sensor
 int pressure; //Integer value for pressure given by the mapping formula below
 boolean cardavailable;
 
+float vmain;
+float vserv;
+
 void setup()
 {
   analogReference(INTERNAL); //Use internal 1.1V reference voltage
   delay(10);
   //mySerial.begin(9600);
-  Serial.begin(38400);
+  Serial.begin(4800);
   DEBUG_PRINTLN("Initialising....");
   pinMode(P_RADIO_TXD, OUTPUT);
   pinMode(P_RADIO_EN, OUTPUT);
@@ -230,6 +233,7 @@ void loop()
 {
   digitalWrite(P_RADIO_EN,HIGH);
   getgps();
+  getvtg();
   readpressure();
   transmit();
   logit();
@@ -257,8 +261,10 @@ void getgps() {
   {
     int c = Serial.read();
     DEBUG_WRITE(c); 
+    logchar(c);
     if (gps.encode(c))
     {
+      logchar('!');
       gps.get_position(&lat, &lon, &fix_age);
       alt = gps.altitude();
       gps.crack_datetime(&years, &months, &days,
@@ -266,13 +272,16 @@ void getgps() {
       DEBUG_PRINTLN();
     }
   }
+  delay(10);
   Serial.println("$EIGPQ,RMC*3A");
   while (Serial.available())
   {
     int c = Serial.read();
-    DEBUG_WRITE(c); 
+    DEBUG_WRITE(c);
+    logchar(c);
     if (gps.encode(c))
     {
+      logchar('!');
       gps.get_position(&lat, &lon, &fix_age);
       alt = gps.altitude();
       gps.crack_datetime(&years, &months, &days,
@@ -494,7 +503,7 @@ float flightplan(){
 
 void transmit(){
   packetNum++;
-  int result = sprintf(packet,"$$ALTI,%u,%u:%u:%u,%08li,%08li,%lu,%d,%d*",packetNum,hour,minutes,second,lat,lon,alt,pressure,averageTemperature());
+  int result = sprintf(packet,"$$ALTI,%u,%u:%u:%u,%08li,%08li,%lu,%d,%d*",packetNum,hour,minutes,second,lat,lon,alt,pressure,vmain);
   crc = (CRC16(&packet[3]));
   result = sprintf(&packet[result],"%04X\n",crc);
   delay(1000);
@@ -562,6 +571,22 @@ void logit() {
    Serial.print(lastservopos,DEC);
    Serial.print("\n");
    */
+}
+void logchar(char data) {
+  if (cardavailable) {
+    File dataFile = SD.open("datalog.txt", FILE_WRITE);
+    if (dataFile) {
+    dataFile.print(data);
+    dataFile.close();
+    // print to the serial port too:
+  }  
+  // if the file isn't open, pop up an error:
+  else {
+    DEBUG_PRINTLN("error opening datalog.txt");
+  } 
+  
+  //int timenow = millis();
+  }
 }
 
 void rtty_tx(char* sentence, int baud)
@@ -653,6 +678,11 @@ void rtty_tx_bit(int b, int baud)
         delayMicroseconds(10000);
         delayMicroseconds(10150);
     }
+}
+
+void getvtg() {
+  float vin = analogRead(V_MAIN);
+  vmain = vin / 133;
 }
 
 
