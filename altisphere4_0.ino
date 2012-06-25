@@ -8,17 +8,17 @@
 //#define DEBUG
 
 #ifdef DEBUG
-  #define DEBUG_PRINT(x)     Serial.print (x)
-  #define DEBUG_PRINTDEC(x)     Serial.print (x, DEC)
-  #define DEBUG_PRINTHEX(x)  Serial.print (x,HEX)
-  #define DEBUG_PRINTLN(x)  Serial.println (x)
-  #define DEBUG_WRITE(x) Serial.write (x)
+#define DEBUG_PRINT(x)     Serial.print (x)
+#define DEBUG_PRINTDEC(x)     Serial.print (x, DEC)
+#define DEBUG_PRINTHEX(x)  Serial.print (x,HEX)
+#define DEBUG_PRINTLN(x)  Serial.println (x)
+#define DEBUG_WRITE(x) Serial.write (x)
 #else
-  #define DEBUG_PRINT(x)
-  #define DEBUG_PRINTDEC(x)
-  #define DEBUG_PRINTLN(x)
-  #define DEBUG_PRINTHEX(x)
-  #define DEBUG_WRITE(x)
+#define DEBUG_PRINT(x)
+#define DEBUG_PRINTDEC(x)
+#define DEBUG_PRINTLN(x)
+#define DEBUG_PRINTHEX(x)
+#define DEBUG_WRITE(x)
 #endif  
 
 #if defined(ARDUINO) && ARDUINO >= 100
@@ -159,25 +159,26 @@ void setup()
     DEBUG_PRINTLN("Card failed, or not present");
     cardavailable = false;
     // don't do anything more:
-  } else {
-  DEBUG_PRINTLN("card initialized.");
-  cardavailable = true;
+  } 
+  else {
+    DEBUG_PRINTLN("card initialized.");
+    cardavailable = true;
   }
   //vservo.attach(P_SERVO_DATA);          // attaches the servo on pin 9 to the servo object 
   //vservo.write(servoClosed);                  // sets the servo position according to the scaled value 
   delay(15);                           // waits for the servo to get there 
-/*
+  /*
   // THIS COMMAND SETS FLIGHT MODE AND CONFIRMS IT 
-  mySerial.println("Setting uBlox nav mode: ");
-  uint8_t setNav[] = {
-    0xB5, 0x62, 0x06, 0x24, 0x24, 0x00, 0xFF, 0xFF, 0x06, 0x03, 0x00, 0x00, 0x00, 0x00, 0x10, 0x27, 0x00, 0x00, 0x05, 0x00, 0xFA, 0x00, 0xFA, 0x00, 0x64, 0x00, 0x2C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0xDC                          };
-  while(!gps_set_sucess)
-  {
-    sendUBX(setNav, sizeof(setNav)/sizeof(uint8_t));
-    gps_set_sucess=getUBX_ACK(setNav);
-  }
-  gps_set_sucess=0;
-*/
+   mySerial.println("Setting uBlox nav mode: ");
+   uint8_t setNav[] = {
+   0xB5, 0x62, 0x06, 0x24, 0x24, 0x00, 0xFF, 0xFF, 0x06, 0x03, 0x00, 0x00, 0x00, 0x00, 0x10, 0x27, 0x00, 0x00, 0x05, 0x00, 0xFA, 0x00, 0xFA, 0x00, 0x64, 0x00, 0x2C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0xDC                          };
+   while(!gps_set_sucess)
+   {
+   sendUBX(setNav, sizeof(setNav)/sizeof(uint8_t));
+   gps_set_sucess=getUBX_ACK(setNav);
+   }
+   gps_set_sucess=0;
+   */
   // THE FOLLOWING COMMANDS DO WHAT THE $PUBX ONES DO BUT WITH CONFIRMATION
   /*
   debug.println("Switching off NMEA GLL: ");
@@ -242,7 +243,7 @@ void loop()
   DEBUG_PRINT(lat);
   DEBUG_PRINT(lon);
   DEBUG_PRINTLN(alt);
-  
+
 }     
 // Send a byte array of UBX protocol to the GPS
 void sendUBX(uint8_t *MSG, uint8_t len) {
@@ -510,13 +511,17 @@ void transmit(){
   char slat[10], slon[10], salt[8];
   //ftoa(slat,f_lat,8); 
   //ftoa(slon,f_lon,8);
-  fmtDouble(f_lat,8,slat,10);
-  fmtDouble(f_lon,8,slon,10);
+  //f_lat *= 100;
+  //f_lon *= 100;
+  fmtDouble(f_lat,6,slat,10);
+  fmtDouble(f_lon,6,slon,10);
   fmtDouble(f_alt,6,salt,8);
+
+
   int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d*",packetNum,hour,minutes,second,slat,slon,salt,pressure,vmain);
   crc = (CRC16(&packet[3]));
   result = sprintf(&packet[result],"%04X\n",crc);
-  delay(1000);
+  //delay(1000);
   rtty_preamble(1);
   rtty_tx(packet,1);
   //set timers
@@ -525,7 +530,14 @@ void transmit(){
 
 void readpressure() {
   sensorValue = analogRead(A0);
-  pressure = map(sensorValue, 0, 730, -2000, 2000);  //Map ADC to pressure
+  sensorValue = 0;
+  for (int i = 0; i < 5; i++) {
+    delay(1);
+    sensorValue += analogRead(A0);
+  }
+  sensorValue /= 5;
+  pressure = map(sensorValue, 4, 927, -2000, 2000);  //Map ADC to pressure
+  pressure -= 45;
 }
 
 //******************************************
@@ -537,22 +549,22 @@ void logit() {
   if (cardavailable) {
     File dataFile = SD.open("datalog.txt", FILE_WRITE);
     if (dataFile) {
-    dataFile.println(packet);
-    dataFile.print("Lat: ");
-    dataFile.print(lat);
-    dataFile.print(" Lon: ");
-    dataFile.print(lon);
-    dataFile.print(" Alt: ");
-    dataFile.println(alt);
-    dataFile.close();
-    // print to the serial port too:
-  }  
-  // if the file isn't open, pop up an error:
-  else {
-    DEBUG_PRINTLN("error opening datalog.txt");
-  } 
-  
-  //int timenow = millis();
+      dataFile.println(packet);
+      dataFile.print("Lat: ");
+      dataFile.print(lat);
+      dataFile.print(" Lon: ");
+      dataFile.print(lon);
+      dataFile.print(" Alt: ");
+      dataFile.println(alt);
+      dataFile.close();
+      // print to the serial port too:
+    }  
+    // if the file isn't open, pop up an error:
+    else {
+      DEBUG_PRINTLN("error opening datalog.txt");
+    } 
+
+    //int timenow = millis();
   }
 
 
@@ -586,108 +598,108 @@ void logchar(char data) {
   if (cardavailable) {
     File dataFile = SD.open("datalog.txt", FILE_WRITE);
     if (dataFile) {
-    dataFile.print(data);
-    dataFile.close();
-    // print to the serial port too:
-  }  
-  // if the file isn't open, pop up an error:
-  else {
-    DEBUG_PRINTLN("error opening datalog.txt");
-  } 
-  
-  //int timenow = millis();
+      dataFile.print(data);
+      dataFile.close();
+      // print to the serial port too:
+    }  
+    // if the file isn't open, pop up an error:
+    else {
+      DEBUG_PRINTLN("error opening datalog.txt");
+    } 
+
+    //int timenow = millis();
   }
 }
 
 void rtty_tx(char* sentence, int baud)
 {
-    // Disable interrupts
-    //noInterrupts();
+  // Disable interrupts
+  //noInterrupts();
 
-    int i=0;
-    while(sentence[i] != 0)
-    {
-        rtty_tx_byte(sentence[i], baud);
-        i++;
-    }
+  int i=0;
+  while(sentence[i] != 0)
+  {
+    rtty_tx_byte(sentence[i], baud);
+    i++;
+  }
 
-    // Re-enable interrupts
-    //interrupts();
+  // Re-enable interrupts
+  //interrupts();
 }
 
 void rtty_preamble(int baud)
 {
-    char sentence[] = "UUUUUUUU\r\n";
+  char sentence[] = "UUUUUUUU\r\n";
 
-    // Disable interrupts
-    //noInterrupts();
+  // Disable interrupts
+  //noInterrupts();
 
-    int i=0;
-    while(sentence[i] != 0)
-    {
-        rtty_tx_byte(sentence[i], baud);
-        i++;
-    }
+  int i=0;
+  while(sentence[i] != 0)
+  {
+    rtty_tx_byte(sentence[i], baud);
+    i++;
+  }
 
-    // Re-enable interrupts
-    //interrupts();
+  // Re-enable interrupts
+  //interrupts();
 }
 
 void rtty_tx_byte(char c, int baud)
 {
-    // Start bit
-    rtty_tx_bit(0, baud);
+  // Start bit
+  rtty_tx_bit(0, baud);
 
-    // Send byte
-    for(int b=0; b<8; b++)
+  // Send byte
+  for(int b=0; b<8; b++)
+  {
+    if(c & 1)
     {
-        if(c & 1)
-        {
-            rtty_tx_bit(1, baud);
-        }
-        else
-        {
-            rtty_tx_bit(0, baud);
-        }
-
-        c = c >> 1;
+      rtty_tx_bit(1, baud);
+    }
+    else
+    {
+      rtty_tx_bit(0, baud);
     }
 
-    // 2 Stop bits
-    rtty_tx_bit(1, baud);
-    rtty_tx_bit(1, baud);
+    c = c >> 1;
+  }
+
+  // 2 Stop bits
+  rtty_tx_bit(1, baud);
+  rtty_tx_bit(1, baud);
 }
 
 void rtty_tx_bit(int b, int baud)
 {
-    if(b)
-    {
-        // If HIGH
-        digitalWrite(P_RADIO_TXD,HIGH);
-    }
-    else
-    {
-        // If LOW
-        digitalWrite(P_RADIO_TXD,LOW);      
-    }
+  if(b)
+  {
+    // If HIGH
+    digitalWrite(P_RADIO_TXD,HIGH);
+  }
+  else
+  {
+    // If LOW
+    digitalWrite(P_RADIO_TXD,LOW);      
+  }
 
-    if(baud == 1)
-    {
-        // 300 baud
-        delayMicroseconds(3370);
-    }
-    else if(baud == 0)
-    {
-        // 50 baud
-        delayMicroseconds(10000);
-        delayMicroseconds(10150);
-    }
-    else
-    {
-        // Otherwise default to 50 baud
-        delayMicroseconds(10000);
-        delayMicroseconds(10150);
-    }
+  if(baud == 1)
+  {
+    // 300 baud
+    delayMicroseconds(3370);
+  }
+  else if(baud == 0)
+  {
+    // 50 baud
+    delayMicroseconds(10000);
+    delayMicroseconds(10150);
+  }
+  else
+  {
+    // Otherwise default to 50 baud
+    delayMicroseconds(10000);
+    delayMicroseconds(10150);
+  }
 }
 
 void getvtg() {
@@ -697,8 +709,9 @@ void getvtg() {
 
 char *ftoa(char *a, double f, int precision)
 {
-  long p[] = {0,10,100,1000,10000,100000,1000000,10000000,100000000};
-  
+  long p[] = {
+    0,10,100,1000,10000,100000,1000000,10000000,100000000    };
+
   char *ret = a;
   long heiltal = (long)f;
   itoa(heiltal, a, 10);
@@ -783,6 +796,7 @@ fmtDouble(double val, byte precision, char *buf, unsigned bufLen)
       val = -val;
       *buf = '-';
       bufLen--;
+      buf++;
     }
 
     // compute the rounding factor and fractional multiplier
@@ -817,5 +831,7 @@ fmtDouble(double val, byte precision, char *buf, unsigned bufLen)
   // null-terminate the string
   *buf = '\0';
 } 
+
+
 
 
