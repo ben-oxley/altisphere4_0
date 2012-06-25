@@ -513,7 +513,7 @@ void transmit(){
   fmtDouble(f_lat,8,slat,10);
   fmtDouble(f_lon,8,slon,10);
   fmtDouble(f_alt,6,salt,8);
-  int result = sprintf(packet,"$$ALTI,%u,%u:%u:%u,%s,%s,%s,%d,%d*",packetNum,hour,minutes,second,slat,slon,salt,pressure,vmain);
+  int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d*",packetNum,hour,minutes,second,slat,slon,salt,pressure,vmain);
   crc = (CRC16(&packet[3]));
   result = sprintf(&packet[result],"%04X\n",crc);
   delay(1000);
