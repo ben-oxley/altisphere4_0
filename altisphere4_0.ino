@@ -29,7 +29,7 @@
 
 #include <MemoryFree.h>
 #include <SD.h>
-#include <Servo.h>
+//#include <Servo.h>
 #include <TinyGPS.h>
 //#include <SoftwareSerial.h>
 #include <Wire.h>
@@ -96,7 +96,7 @@ byte gps_set_sucess = 0 ;
 //Servo Settings
 #define servoOpen 100 //Servo open position
 #define servoClosed 10 //Servo closed position
-Servo vservo; //Create servo object for valve servo
+//Servo vservo; //Create servo object for valve servo
 int lastservopos = 90; //Integer to store the last given position of the servo
 
 int tmp102Address = 0x48;
@@ -104,6 +104,7 @@ int tmp102Address = 0x48;
 boolean haslaunched = false;
 
 long lat, lon;
+float f_lat, f_lon, f_alt;
 unsigned long fix_age, time, date, speed, course, alt;
 int years;
 byte months, days, hour, minutes, second, hundredths;
@@ -162,8 +163,8 @@ void setup()
   DEBUG_PRINTLN("card initialized.");
   cardavailable = true;
   }
-  vservo.attach(P_SERVO_DATA);          // attaches the servo on pin 9 to the servo object 
-  vservo.write(servoClosed);                  // sets the servo position according to the scaled value 
+  //vservo.attach(P_SERVO_DATA);          // attaches the servo on pin 9 to the servo object 
+  //vservo.write(servoClosed);                  // sets the servo position according to the scaled value 
   delay(15);                           // waits for the servo to get there 
 /*
   // THIS COMMAND SETS FLIGHT MODE AND CONFIRMS IT 
@@ -237,7 +238,6 @@ void loop()
   readpressure();
   transmit();
   logit();
-  delay(1000);
   DEBUG_PRINTLN();
   DEBUG_PRINT(lat);
   DEBUG_PRINT(lon);
@@ -266,7 +266,9 @@ void getgps() {
     {
       logchar('!');
       gps.get_position(&lat, &lon, &fix_age);
+      gps.f_get_position(&f_lat, &f_lon, &fix_age);
       alt = gps.altitude();
+      f_alt = gps.f_altitude();
       gps.crack_datetime(&years, &months, &days,
       &hour, &minutes, &second, &hundredths, &fix_age);
       DEBUG_PRINTLN();
@@ -283,6 +285,8 @@ void getgps() {
     {
       logchar('!');
       gps.get_position(&lat, &lon, &fix_age);
+      gps.f_get_position(&f_lat, &f_lon, &fix_age);
+      f_alt = gps.f_altitude();
       alt = gps.altitude();
       gps.crack_datetime(&years, &months, &days,
       &hour, &minutes, &second, &hundredths, &fix_age);
@@ -335,7 +339,7 @@ void servopos(int pos) {
     {
       for (x = lastservopos; x <= pos; x++) //Slowly increase the servo's position
       {
-        vservo.write(x);
+        //vservo.write(x);
         delay(10);
       }
     }
@@ -343,7 +347,7 @@ void servopos(int pos) {
   {
     for (x = lastservopos; x >= pos; x--) //Slowly decrease the servo's position
     {
-      vservo.write(x);
+      //vservo.write(x);
       delay(10);
     }
   }
@@ -503,7 +507,13 @@ float flightplan(){
 
 void transmit(){
   packetNum++;
-  int result = sprintf(packet,"$$ALTI,%u,%u:%u:%u,%08li,%08li,%lu,%d,%d*",packetNum,hour,minutes,second,lat,lon,alt,pressure,vmain);
+  char slat[10], slon[10], salt[8];
+  //ftoa(slat,f_lat,8); 
+  //ftoa(slon,f_lon,8);
+  fmtDouble(f_lat,8,slat,10);
+  fmtDouble(f_lon,8,slon,10);
+  fmtDouble(f_alt,6,salt,8);
+  int result = sprintf(packet,"$$ALTI,%u,%u:%u:%u,%s,%s,%s,%d,%d*",packetNum,hour,minutes,second,slat,slon,salt,pressure,vmain);
   crc = (CRC16(&packet[3]));
   result = sprintf(&packet[result],"%04X\n",crc);
   delay(1000);
@@ -607,7 +617,7 @@ void rtty_tx(char* sentence, int baud)
 
 void rtty_preamble(int baud)
 {
-    char sentence[] = "UUUUUUUUUUUUUUUUUUUUUU\r\n";
+    char sentence[] = "UUUUUUUU\r\n";
 
     // Disable interrupts
     //noInterrupts();
@@ -681,8 +691,131 @@ void rtty_tx_bit(int b, int baud)
 }
 
 void getvtg() {
-  float vin = analogRead(V_MAIN);
-  vmain = vin / 133;
+  int vin = analogRead(V_MAIN);
 }
+
+
+char *ftoa(char *a, double f, int precision)
+{
+  long p[] = {0,10,100,1000,10000,100000,1000000,10000000,100000000};
+  
+  char *ret = a;
+  long heiltal = (long)f;
+  itoa(heiltal, a, 10);
+  while (*a != '\0') a++;
+  *a++ = '.';
+  long desimal = abs((long)((f - heiltal) * p[precision]));
+  itoa(desimal, a, 10);
+  return ret;
+}
+
+
+void fmtDouble(double val, byte precision, char *buf, unsigned bufLen = 0xffff);
+unsigned fmtUnsigned(unsigned long val, char *buf, unsigned bufLen = 0xffff, byte width = 0);
+
+//
+// Produce a formatted string in a buffer corresponding to the value provided.
+// If the 'width' parameter is non-zero, the value will be padded with leading
+// zeroes to achieve the specified width.  The number of characters added to
+// the buffer (not including the null termination) is returned.
+//
+unsigned
+fmtUnsigned(unsigned long val, char *buf, unsigned bufLen, byte width)
+{
+  if (!buf || !bufLen)
+    return(0);
+
+  // produce the digit string (backwards in the digit buffer)
+  char dbuf[10];
+  unsigned idx = 0;
+  while (idx < sizeof(dbuf))
+  {
+    dbuf[idx++] = (val % 10) + '0';
+    if ((val /= 10) == 0)
+      break;
+  }
+
+  // copy the optional leading zeroes and digits to the target buffer
+  unsigned len = 0;
+  byte padding = (width > idx) ? width - idx : 0;
+  char c = '0';
+  while ((--bufLen > 0) && (idx || padding))
+  {
+    if (padding)
+      padding--;
+    else
+      c = dbuf[--idx];
+    *buf++ = c;
+    len++;
+  }
+
+  // add the null termination
+  *buf = '\0';
+  return(len);
+}
+
+//
+// Format a floating point value with number of decimal places.
+// The 'precision' parameter is a number from 0 to 6 indicating the desired decimal places.
+// The 'buf' parameter points to a buffer to receive the formatted string.  This must be
+// sufficiently large to contain the resulting string.  The buffer's length may be
+// optionally specified.  If it is given, the maximum length of the generated string
+// will be one less than the specified value.
+//
+// example: fmtDouble(3.1415, 2, buf); // produces 3.14 (two decimal places)
+//
+void
+fmtDouble(double val, byte precision, char *buf, unsigned bufLen)
+{
+  if (!buf || !bufLen)
+    return;
+
+  // limit the precision to the maximum allowed value
+  const byte maxPrecision = 6;
+  if (precision > maxPrecision)
+    precision = maxPrecision;
+
+  if (--bufLen > 0)
+  {
+    // check for a negative value
+    if (val < 0.0)
+    {
+      val = -val;
+      *buf = '-';
+      bufLen--;
+    }
+
+    // compute the rounding factor and fractional multiplier
+    double roundingFactor = 0.5;
+    unsigned long mult = 1;
+    for (byte i = 0; i < precision; i++)
+    {
+      roundingFactor /= 10.0;
+      mult *= 10;
+    }
+
+    if (bufLen > 0)
+    {
+      // apply the rounding factor
+      val += roundingFactor;
+
+      // add the integral portion to the buffer
+      unsigned len = fmtUnsigned((unsigned long)val, buf, bufLen);
+      buf += len;
+      bufLen -= len;
+    }
+
+    // handle the fractional portion
+    if ((precision > 0) && (bufLen > 0))
+    {
+      *buf++ = '.';
+      if (--bufLen > 0)
+        buf += fmtUnsigned((unsigned long)((val - (unsigned long)val) * mult), buf, bufLen, precision);
+    }
+  }
+
+  // null-terminate the string
+  *buf = '\0';
+} 
 
 
