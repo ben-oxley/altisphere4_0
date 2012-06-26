@@ -1,3 +1,5 @@
+
+
 // ___________________________
 //|        Ben Oxley          |
 //|AltiSphere Pre Release Code|
@@ -6,6 +8,7 @@
 
 //FIX: The release notes includes a handy pre-compiler directive to check of the arduino flavour you are using.
 //#define DEBUG
+//#define W_TEMP_PROG
 
 #ifdef DEBUG
 #define DEBUG_PRINT(x)     Serial.print (x)
@@ -13,12 +16,14 @@
 #define DEBUG_PRINTHEX(x)  Serial.print (x,HEX)
 #define DEBUG_PRINTLN(x)  Serial.println (x)
 #define DEBUG_WRITE(x) Serial.write (x)
+#define DEBUG_SD_WRITE(x) logchar (x)
 #else
 #define DEBUG_PRINT(x)
 #define DEBUG_PRINTDEC(x)
 #define DEBUG_PRINTLN(x)
 #define DEBUG_PRINTHEX(x)
 #define DEBUG_WRITE(x)
+#define DEBUG_SD_WRITE(x)
 #endif  
 
 #if defined(ARDUINO) && ARDUINO >= 100
@@ -29,17 +34,12 @@
 
 #include <MemoryFree.h>
 #include <SD.h>
-//#include <Servo.h>
 #include <TinyGPS.h>
-//#include <SoftwareSerial.h>
 #include <Wire.h>
+#include <Servo.h>
 //#include <Time.h>
-//#include <WString.h> //
-//#include <ctype.h> 
+
 #include <util/crc16.h> //Includes for crc16 cyclic redundancy check to validate serial comms
-//#include <stdio.h>
-//#include <stdlib.h>
-//#include <Arduino.h>
 
 /*
  Output  0 - GPS_RXD          Output  7 - NICHROME_ENABLE
@@ -96,10 +96,10 @@ byte gps_set_sucess = 0 ;
 //Servo Settings
 #define servoOpen 100 //Servo open position
 #define servoClosed 10 //Servo closed position
-//Servo vservo; //Create servo object for valve servo
+Servo vservo; //Create servo object for valve servo
 int lastservopos = 90; //Integer to store the last given position of the servo
 
-int tmp102Address = 0x48;
+int tmp102Address = 0x48; //(1001000 or A0 = A1 = A2 = LOW)
 
 boolean haslaunched = false;
 
@@ -137,12 +137,14 @@ unsigned int sensorValue; //Integer value for ADC reading from pressure sensor
 int pressure; //Integer value for pressure given by the mapping formula below
 boolean cardavailable;
 
-float vmain;
-float vserv;
+int v_in;
+int vs_in;
 
 void setup()
 {
+  
   analogReference(INTERNAL); //Use internal 1.1V reference voltage
+  ADMUX = 0xC8;
   delay(10);
   //mySerial.begin(9600);
   Serial.begin(4800);
@@ -262,7 +264,7 @@ void getgps() {
   {
     int c = Serial.read();
     DEBUG_WRITE(c); 
-    logchar(c);
+    DEBUG_SD_WRITE(c);
     if (gps.encode(c))
     {
       logchar('!');
@@ -281,7 +283,7 @@ void getgps() {
   {
     int c = Serial.read();
     DEBUG_WRITE(c);
-    logchar(c);
+    DEBUG_SD_WRITE(c);
     if (gps.encode(c))
     {
       logchar('!');
@@ -340,7 +342,8 @@ void servopos(int pos) {
     {
       for (x = lastservopos; x <= pos; x++) //Slowly increase the servo's position
       {
-        //vservo.write(x);
+        vservo.write(x);
+        
         delay(10);
       }
     }
@@ -348,7 +351,7 @@ void servopos(int pos) {
   {
     for (x = lastservopos; x >= pos; x--) //Slowly decrease the servo's position
     {
-      //vservo.write(x);
+      vservo.write(x);
       delay(10);
     }
   }
@@ -423,14 +426,16 @@ int readTemperature()
   return (ADCL | (ADCH << 8)) - 342; // combine bytes & correct for temp offset (approximate)}
 }
 
-float averageTemperature()
+int averageTemperature()
 {
+  analogReference(INTERNAL); //Use internal 1.1V reference voltage
+  ADMUX = 0xC8;
   readTemperature(); // discard first sample (never hurts to be safe)
   float averageTemp; // create a float to hold running average
   for (int i = 1; i < 100; i++) // start at 1 so we dont divide by 0
     averageTemp += ((readTemperature() - averageTemp)/(float)i); // get next sample, calculate running average
-
-  return averageTemp; // return average temperature reading
+  averageTemp *= 100;
+  return (int)averageTemp; // return average temperature reading
 } 
 
 void checkmem()
@@ -439,7 +444,7 @@ void checkmem()
 }
 
 //from http://bildr.org/2011/01/tmp102-arduino/
-float getextTemperature(){
+int getextTemperature(){
   Wire.begin();
   delay(10);
   Wire.requestFrom(tmp102Address,2); 
@@ -450,7 +455,7 @@ float getextTemperature(){
   //it's a 12bit int, using two's compliment for negative
   int TemperatureSum = ((MSB << 8) | LSB) >> 4; 
 
-  float celsius = TemperatureSum*0.0625;
+  int celsius = TemperatureSum*0.0625;
   return celsius;
 }
 
@@ -518,7 +523,7 @@ void transmit(){
   fmtDouble(f_alt,6,salt,8);
 
 
-  int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d*",packetNum,hour,minutes,second,slat,slon,salt,pressure,vmain);
+  int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d,%d,%d*",packetNum,hour,minutes,second,slat,slon,salt,pressure,v_in,vs_in,averageTemperature());
   crc = (CRC16(&packet[3]));
   result = sprintf(&packet[result],"%04X\n",crc);
   //delay(1000);
@@ -549,13 +554,22 @@ void logit() {
   if (cardavailable) {
     File dataFile = SD.open("datalog.txt", FILE_WRITE);
     if (dataFile) {
-      dataFile.println(packet);
-      dataFile.print("Lat: ");
+      dataFile.print(packet);
+      dataFile.print(",Lat:,");
       dataFile.print(lat);
-      dataFile.print(" Lon: ");
+      dataFile.print(",Lon:, ");
       dataFile.print(lon);
-      dataFile.print(" Alt: ");
+      dataFile.print(",Alt:,");
       dataFile.println(alt);
+      dataFile.print(",Pressure Raw:,");
+      dataFile.print(sensorValue);
+      dataFile.print(",Pressure:,");
+      dataFile.print(pressure);
+      dataFile.print(",Raw Main Battery Voltage,");
+      dataFile.print(v_in);
+      dataFile.print(",Raw Servo Battery Voltage,");
+      dataFile.print(vs_in);
+      dataFile.println();
       dataFile.close();
       // print to the serial port too:
     }  
@@ -703,23 +717,8 @@ void rtty_tx_bit(int b, int baud)
 }
 
 void getvtg() {
-  int vin = analogRead(V_MAIN);
-}
-
-
-char *ftoa(char *a, double f, int precision)
-{
-  long p[] = {
-    0,10,100,1000,10000,100000,1000000,10000000,100000000    };
-
-  char *ret = a;
-  long heiltal = (long)f;
-  itoa(heiltal, a, 10);
-  while (*a != '\0') a++;
-  *a++ = '.';
-  long desimal = abs((long)((f - heiltal) * p[precision]));
-  itoa(desimal, a, 10);
-  return ret;
+  v_in = analogRead(V_MAIN);
+  vs_in = analogRead(V_SERVO);
 }
 
 
