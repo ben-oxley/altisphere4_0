@@ -6,7 +6,6 @@
 //|___________________________|
 //Must initalise some variables on day of flight, may not work over midnight
 
-//FIX: The release notes includes a handy pre-compiler directive to check of the arduino flavour you are using.
 //#define DEBUG
 //#define W_TEMP_PROG
 
@@ -97,7 +96,7 @@ byte gps_set_sucess = 0 ;
 #define servoOpen 100 //Servo open position
 #define servoClosed 10 //Servo closed position
 Servo vservo; //Create servo object for valve servo
-int lastservopos = 90; //Integer to store the last given position of the servo
+int lastservopos = 10; //Integer to store the last given position of the servo
 
 int tmp102Address = 0x48; //(1001000 or A0 = A1 = A2 = LOW)
 
@@ -166,70 +165,17 @@ void setup()
     DEBUG_PRINTLN("card initialized.");
     cardavailable = true;
   }
+  Wire.begin();
+  delay(10);
+  //Wire.beginTransmission(0x00); These 3 lines reset all registers
+  //Wire.write(0x06); 
+  //Wire.endTransmission();
+  
   //vservo.attach(P_SERVO_DATA);          // attaches the servo on pin 9 to the servo object 
   //vservo.write(servoClosed);                  // sets the servo position according to the scaled value 
   delay(15);                           // waits for the servo to get there 
-  /*
-  // THIS COMMAND SETS FLIGHT MODE AND CONFIRMS IT 
-   mySerial.println("Setting uBlox nav mode: ");
-   uint8_t setNav[] = {
-   0xB5, 0x62, 0x06, 0x24, 0x24, 0x00, 0xFF, 0xFF, 0x06, 0x03, 0x00, 0x00, 0x00, 0x00, 0x10, 0x27, 0x00, 0x00, 0x05, 0x00, 0xFA, 0x00, 0xFA, 0x00, 0x64, 0x00, 0x2C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0xDC                          };
-   while(!gps_set_sucess)
-   {
-   sendUBX(setNav, sizeof(setNav)/sizeof(uint8_t));
-   gps_set_sucess=getUBX_ACK(setNav);
-   }
-   gps_set_sucess=0;
-   */
-  // THE FOLLOWING COMMANDS DO WHAT THE $PUBX ONES DO BUT WITH CONFIRMATION
-  /*
-  debug.println("Switching off NMEA GLL: ");
-   uint8_t setGLL[] = { 
-   0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0xF0, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x2B                     };
-   while(!gps_set_sucess)
-   {		
-   sendUBX(setGLL, sizeof(setGLL)/sizeof(uint8_t));
-   gps_set_sucess=getUBX_ACK(setGLL);
-   }
-   gps_set_sucess=0;
-   
-   debug.println("Switching off NMEA GSA: ");
-   uint8_t setGSA[] = { 
-   0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0xF0, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x32                     };
-   while(!gps_set_sucess)
-   {	
-   sendUBX(setGSA, sizeof(setGSA)/sizeof(uint8_t));
-   gps_set_sucess=getUBX_ACK(setGSA);
-   }
-   gps_set_sucess=0;
-   debug.println("Switching off NMEA GSV: ");
-   uint8_t setGSV[] = { 
-   0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0xF0, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x03, 0x39                     };
-   while(!gps_set_sucess)
-   {
-   sendUBX(setGSV, sizeof(setGSV)/sizeof(uint8_t));
-   gps_set_sucess=getUBX_ACK(setGSV);
-   }
-   gps_set_sucess=0;
-   debug.print("Switching off NMEA RMC: ");
-   uint8_t setRMC[] = { 
-   0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0xF0, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x04, 0x40                     };
-   while(!gps_set_sucess)
-   {
-   sendUBX(setRMC, sizeof(setRMC)/sizeof(uint8_t));
-   gps_set_sucess=getUBX_ACK(setRMC);
-   }
-   gps_set_sucess=0;
-   debug.print("Switching off NMEA VTG: ");
-   uint8_t setVTG[] = { 
-   0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0xF0, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x46                     };
-   while(!gps_set_sucess)
-   {
-   sendUBX(setVTG, sizeof(setRMC)/sizeof(uint8_t));
-   gps_set_sucess=getUBX_ACK(setVTG);
-   
-   }
-   */
+  
+  
 }
 
 
@@ -239,6 +185,7 @@ void loop()
   getgps();
   getvtg();
   readpressure();
+  //valvecontrol();
   transmit();
   logit();
   DEBUG_PRINTLN();
@@ -247,18 +194,8 @@ void loop()
   DEBUG_PRINTLN(alt);
 
 }     
-// Send a byte array of UBX protocol to the GPS
-void sendUBX(uint8_t *MSG, uint8_t len) {
-  for(int i=0; i<len; i++) {
-    Serial.write(MSG[i]);
-    //mySerial.print(MSG[i], HEX);
-  }
-  Serial.println();
-}
 
 void getgps() {
-  //Serial.println("$PUBX,00*33");
-  //Serial.println("$EIGPQ,RMC*3A");
   Serial.println("$EIGPQ,GGA*27");
   while (Serial.available())
   {
@@ -298,10 +235,21 @@ void getgps() {
   }
 }
 
+void cutdown(boolean state)
+{
+  pinMode(P_CUTDOWN,OUTPUT);
+  if (state) {
+  digitalWrite(P_CUTDOWN,HIGH);
+  } else {
+  digitalWrite(P_CUTDOWN,LOW);
+  }
+}
+
 void valvecontrol() 
 {
   if (haslaunched) {
-    if (fix_age < 3600000) { //If the last GPS lock was less than an hour ago
+    if (fix_age < 1800000) { //If the last GPS lock was less than half an hour ago
+      
       if ((lat < 5223) && (lon < 20) && (lon > 1)) {
         if ((fix_age > 60000) && (speedavg() > 1))
         {
@@ -318,20 +266,22 @@ void valvecontrol()
         }
       } 
       else {
-        servopos(servoOpen);
+        cutdown(true);
+        //servopos(servoOpen);
       }
     } 
     else { 
-      servopos(servoOpen); //open the valve to dump helium
+      cutdown(true);
+      //servopos(servoOpen); //open the valve to dump helium
     }
   } 
   else if(alt > 500) {
     haslaunched = true;
   } 
-  else if(millis() - lastservomove > 10000) {
-    servopos(servoClosed);
+  else if(millis() - lastservomove > 100000) { //Make the servo close regularly until launch (as it is plugged in after filling)
+    lastservopos = servoClosed - 1; //Make the system think the valve needs to be moved
+    servopos(servoClosed);  
   }
-
 }
 
 void servopos(int pos) {
@@ -343,7 +293,6 @@ void servopos(int pos) {
       for (x = lastservopos; x <= pos; x++) //Slowly increase the servo's position
       {
         vservo.write(x);
-        
         delay(10);
       }
     }
@@ -355,68 +304,9 @@ void servopos(int pos) {
       delay(10);
     }
   }
+  delay(500);
   digitalWrite(P_SERVO_EN,LOW); //Turn the MOSFET off
   lastservopos = pos; // write the new servo position to the register
-}
-
-
-
-// Calculate expected UBX ACK packet and parse UBX response from GPS
-boolean getUBX_ACK(uint8_t *MSG) {
-  uint8_t b;
-  uint8_t ackByteID = 0;
-  uint8_t ackPacket[10];
-  unsigned long startTime = millis();
-  DEBUG_PRINTLN(" * Reading ACK response: ");
-
-  // Construct the expected ACK packet    
-  ackPacket[0] = 0xB5;	// header
-  ackPacket[1] = 0x62;	// header
-  ackPacket[2] = 0x05;	// class
-  ackPacket[3] = 0x01;	// id
-  ackPacket[4] = 0x02;	// length
-  ackPacket[5] = 0x00;
-  ackPacket[6] = MSG[2];	// ACK class
-  ackPacket[7] = MSG[3];	// ACK id
-  ackPacket[8] = 0;		// CK_A
-  ackPacket[9] = 0;		// CK_B
-
-  // Calculate the checksums
-  for (uint8_t i=2; i<8; i++) {
-    ackPacket[8] = ackPacket[8] + ackPacket[i];
-    ackPacket[9] = ackPacket[9] + ackPacket[8];
-  }
-
-  while (1) {
-
-    // Test for success
-    if (ackByteID > 9) {
-      // All packets in order!
-      DEBUG_PRINTLN(" (SUCCESS!)");
-      return true;
-    }
-
-    // Timeout if no valid response in 3 seconds
-    if (millis() - startTime > 3000) { 
-      DEBUG_PRINTLN(" (FAILED!)");
-      return false;
-    }
-
-    // Make sure data is available to read
-    if (Serial.available()) {
-      b = Serial.read();
-
-      // Check that bytes arrive in sequence as per expected ACK packet
-      if (b == ackPacket[ackByteID]) { 
-        ackByteID++;
-        DEBUG_PRINTHEX(b);
-      } 
-      else {
-        ackByteID = 0;	// Reset and look again, invalid order
-      }
-
-    }
-  }
 }
 
 int readTemperature()
@@ -426,7 +316,7 @@ int readTemperature()
   return (ADCL | (ADCH << 8)) - 342; // combine bytes & correct for temp offset (approximate)}
 }
 
-int averageTemperature()
+float averageTemperature()
 {
   analogReference(INTERNAL); //Use internal 1.1V reference voltage
   ADMUX = 0xC8;
@@ -434,8 +324,8 @@ int averageTemperature()
   float averageTemp; // create a float to hold running average
   for (int i = 1; i < 100; i++) // start at 1 so we dont divide by 0
     averageTemp += ((readTemperature() - averageTemp)/(float)i); // get next sample, calculate running average
-  averageTemp *= 100;
-  return (int)averageTemp; // return average temperature reading
+  //averageTemp *= 100;
+  return averageTemp; // return average temperature reading
 } 
 
 void checkmem()
@@ -444,9 +334,14 @@ void checkmem()
 }
 
 //from http://bildr.org/2011/01/tmp102-arduino/
-int getextTemperature(){
+float getextTemperature(){
   Wire.begin();
-  delay(10);
+  /*delay(10);
+  Wire.beginTransmission(tmp102Address);
+  Wire.write(0x01);
+  Wire.write(0x79);
+  Wire.endTransmission();*/
+  delay(20);
   Wire.requestFrom(tmp102Address,2); 
 
   byte MSB = Wire.read();
@@ -454,8 +349,10 @@ int getextTemperature(){
 
   //it's a 12bit int, using two's compliment for negative
   int TemperatureSum = ((MSB << 8) | LSB) >> 4; 
-
-  int celsius = TemperatureSum*0.0625;
+  if(TemperatureSum & (1<<11)) {
+		TemperatureSum |= 0xF800; //Set bits 11 to 15 to 1s to get this reading into real twos compliment
+  }
+  float celsius = float(TemperatureSum)/16;
   return celsius;
 }
 
@@ -513,7 +410,7 @@ float flightplan(){
 
 void transmit(){
   packetNum++;
-  char slat[10], slon[10], salt[8];
+  char slat[10], slon[10], salt[8], stemp[6],sint[6];
   //ftoa(slat,f_lat,8); 
   //ftoa(slon,f_lon,8);
   //f_lat *= 100;
@@ -521,9 +418,9 @@ void transmit(){
   fmtDouble(f_lat,6,slat,10);
   fmtDouble(f_lon,6,slon,10);
   fmtDouble(f_alt,6,salt,8);
-
-
-  int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d,%d,%d*",packetNum,hour,minutes,second,slat,slon,salt,pressure,v_in,vs_in,averageTemperature());
+  fmtDouble(getextTemperature(),2,stemp,6);
+  fmtDouble(averageTemperature(),2,sint,6);
+  int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d,%d,%s,%s*",packetNum,hour,minutes,second,slat,slon,salt,pressure,v_in,vs_in,sint,stemp);
   crc = (CRC16(&packet[3]));
   result = sprintf(&packet[result],"%04X\n",crc);
   //delay(1000);
@@ -580,34 +477,9 @@ void logit() {
 
     //int timenow = millis();
   }
-
-
-  // Openlog version
-  /*
-  Serial.print("Since On,");
-   Serial.print(millis());
-   Serial.print(",Time,");
-   sprintf(temp,"%u:%u:%u",hour,minutes,second);
-   Serial.print(temp);
-   Serial.print(",Lat,");
-   Serial.print(lat);
-   Serial.print(",Long,");
-   Serial.print(lon);
-   Serial.print(",Alt,");
-   Serial.print(alt);
-   Serial.print(",Checksum,");
-   Serial.print(crc);
-   Serial.print(",Speed,");
-   Serial.print(speedavg());
-   Serial.print(",Raw Pressure,");
-   Serial.print(sensorValue,DEC);
-   Serial.print(",Adjusted Pressure,");
-   Serial.print(pressure,DEC);
-   Serial.print(",Last Servo Position,");
-   Serial.print(lastservopos,DEC);
-   Serial.print("\n");
-   */
 }
+
+
 void logchar(char data) {
   if (cardavailable) {
     File dataFile = SD.open("datalog.txt", FILE_WRITE);
@@ -830,6 +702,10 @@ fmtDouble(double val, byte precision, char *buf, unsigned bufLen)
   // null-terminate the string
   *buf = '\0';
 } 
+
+
+
+
 
 
 
