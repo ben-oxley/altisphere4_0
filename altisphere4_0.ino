@@ -122,12 +122,23 @@ float altlast; //Initialise last recorded altitude variable
 //Pre-Flight Variables
 #define datenow "220412" //Define date today (DDMMYY)
 #define arraysize 6 //Define size of flight altitude array
-int flightalt[] = {
-  0,5000,10000,15000,20000,30000}; //Initialise variable array for altitude control points
-int flightspd[] = {
-  100,5,4,2,2,2}; //Initialise variable array for controlled speeds in m/s
+float flightalt[] = {
+  0.0,5000.0,10000.0,15000.0,20000.0,30000.0}; //Initialise variable array for altitude control points
+float cutdownalt = 20000.0;
+unsigned long floattime = 1800000; //Half an hour in millis
+unsigned long cutdowntimer = 0;
+float flightspd[] = {
+  30.0,5.0,4.0,2.0,0.0,0.0}; //Initialise variable array for controlled speeds in m/s
 
-
+byte debugmsg = 0; //[8:cutdown|7:valvestate|6:geofence|5:timefence|4:floatlimit|3:speedlimit|2:gpsfix|1:launched]
+#define msg_cutdown 1<<7
+#define msg_valvestate 1<<6
+#define msg_geofence 1<<5
+#define msg_timefence 1<<4
+#define msg_floatlimit 1<<3
+#define msg_speedlimit 1<<2
+#define msg_gpsfix 1<<1
+#define msg_launched 1<<0
 char packet[120];
 uint16_t crc;
 
@@ -250,28 +261,34 @@ void valvecontrol()
   if (haslaunched) {
     if (fix_age < 1800000) { //If the last GPS lock was less than half an hour ago
       
-      if ((lat < 5223) && (lon < 20) && (lon > 1)) {
-        if ((fix_age > 60000) && (speedavg() > 1))
+      if ((lat < 5223) && (lon < 20) && (lon > 1) && (lat > 4000)) {
+        if ((fix_age > 60000) && (speedavg() > 1)) // close the valve until a new gps position is gained
         {
           servopos(servoClosed);
+          formatdebug(( msg_gpsfix ),true); 
         } 
         else {
+          formatdebug(( msg_gpsfix ),false); 
           if (speedavg() > flightplan())
           {
             servopos(servoOpen);
+            formatdebug(( msg_speedlimit ),true);
           } 
           else {
             servopos(servoClosed);
+            formatdebug(( msg_speedlimit ),false);
           }   
         }
       } 
       else {
         cutdown(true);
+        formatdebug(( msg_cutdown | msg_geofence ),true);
         //servopos(servoOpen);
       }
     } 
-    else { 
+    else {
       cutdown(true);
+      formatdebug(( msg_cutdown | msg_gpsfix ),true);
       //servopos(servoOpen); //open the valve to dump helium
     }
   } 
@@ -281,6 +298,24 @@ void valvecontrol()
   else if(millis() - lastservomove > 100000) { //Make the servo close regularly until launch (as it is plugged in after filling)
     lastservopos = servoClosed - 1; //Make the system think the valve needs to be moved
     servopos(servoClosed);  
+  }
+  
+  if (cutdownalt <= f_alt) {
+    if (cutdowntimer = 0) {
+      cutdowntimer = millis();
+    } else if (cutdowntimer >= floattime) {
+      cutdown(true);
+      formatdebug(( msg_cutdown | msg_floatlimit ),true);
+    }
+  }   
+}
+
+void formatdebug(byte mask,boolean val) {
+  if(val){ //We want to change to a 1
+    debugmsg = debugmsg | mask;
+  } else { //We want to change to a 0
+    mask = ~mask;
+    debugmsg = debugmsg & mask;
   }
 }
 
@@ -307,6 +342,8 @@ void servopos(int pos) {
   delay(500);
   digitalWrite(P_SERVO_EN,LOW); //Turn the MOSFET off
   lastservopos = pos; // write the new servo position to the register
+  if (pos == servoClosed) formatdebug(msg_valvestate,false);
+  if (pos == servoOpen) formatdebug(msg_valvestate,true);
 }
 
 int readTemperature()
@@ -396,12 +433,12 @@ float flightplan(){
   float targetspeed;
   for (int i = 0; i < arraysize; i++) //lookup which array element relates to the current altitude
   {
-    if ( flightalt[i] <= alt) 
+    if ( flightalt[i] <= f_alt) 
     {
       targetspeed = flightspd[i]; //looks up the target speed for this altitude
     }
   }
-  return targetspeed; //returns the target speed to the calling function
+  return targetspeed; //returns the target speed to the calling function  
 }
 
 //void serialEvent(){
