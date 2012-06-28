@@ -1,5 +1,3 @@
-
-
 // ___________________________
 //|        Ben Oxley          |
 //|AltiSphere Pre Release Code|
@@ -36,8 +34,6 @@
 #include <TinyGPS.h>
 #include <Wire.h>
 #include <Servo.h>
-//#include <Time.h>
-
 #include <util/crc16.h> //Includes for crc16 cyclic redundancy check to validate serial comms
 
 /*
@@ -64,33 +60,21 @@
 #define P_SCK 13
 /*
  Servo Goes between 18 and 90 Degrees
- 
- Analog 0 - Pressure Sensor   Vout = VS × (0.2 × P(kPa)+0.5) ± 6.25% VFSS  Voltage is divided by two. Range 0.25-->2.25v Gives a resolution of 6 Pa (4000/(2/(3.3/1024)))
+ Analog 0 - Pressure Sensor
  Analog 1 - V_BATT_SERVO
  Analog 2 - N/C
  Analog 3 - N/C
- Analog 4 - Temperature Sensors SDA
- Analog 5 - Temperature Sensors SCL
+ Analog 4 - Temperature Sensor's SDA
+ Analog 5 - Temperature Sensor's SCL
  Analog 6 - N/C
  Analog 7 - V_BATT_MAIN
  */
 #define A_PRES A0
 #define V_SERVO A1
 #define V_MAIN A7
-/*
-  GPS Level Convertor Board Test Script
- 03/05/2012 2E0UPU
- 
- Initialise the GPS Module in Flight Mode and then echo's out the NMEA Data to the Software Serial.
- 
- This example code is in the public domain.
- Additional Code by J Coxon (http://ukhas.org.uk/guides:falcom_fsa03)
- */
 
 //Define GPS Objects
 TinyGPS gps;
-//SoftwareSerial mySerial(4, 5);
-byte gps_set_sucess = 0 ;
 
 //Servo Settings
 #define servoOpen 100 //Servo open position
@@ -100,36 +84,30 @@ int lastservopos = 10; //Integer to store the last given position of the servo
 
 int tmp102Address = 0x48; //(1001000 or A0 = A1 = A2 = LOW)
 
-boolean haslaunched = false;
-
+//GPS Variables
 long lat, lon;
 float f_lat, f_lon, f_alt;
 unsigned long fix_age, time, date, speed, course, alt;
 int years;
 byte months, days, hour, minutes, second, hundredths;
 
-unsigned int packetNum = 0;
-
-
 //Speed Variables
-float speedarray[20]; //Declare array to store speed values to create moving average
+
+
 int floatindex; //Declare the current place in the speedarray[]
-int timelast; //Initialise time of last valid recieved packet
 int lastservomove;
 float altlast; //Initialise last recorded altitude variable
+boolean haslaunched = false;
 #define MOVINGAVG 10//Define size of moving average
 
 //Pre-Flight Variables
-#define datenow "220412" //Define date today (DDMMYY)
 #define arraysize 6 //Define size of flight altitude array
-float flightalt[] = {
-  0.0,5000.0,10000.0,15000.0,20000.0,30000.0}; //Initialise variable array for altitude control points
-float cutdownalt = 20000.0;
-unsigned long floattime = 1800000; //Half an hour in millis
 unsigned long cutdowntimer = 0;
-float flightspd[] = {
-  30.0,5.0,4.0,2.0,0.0,0.0}; //Initialise variable array for controlled speeds in m/s
+const float cutdownalt = 20000.0;
+const unsigned long floattime = 1800000; //Half an hour in millis
 
+
+//Radio variables
 byte debugmsg = 0; //[8:cutdown|7:valvestate|6:geofence|5:timefence|4:floatlimit|3:speedlimit|2:gpsfix|1:launched]
 #define msg_cutdown 1<<7
 #define msg_valvestate 1<<6
@@ -139,14 +117,16 @@ byte debugmsg = 0; //[8:cutdown|7:valvestate|6:geofence|5:timefence|4:floatlimit
 #define msg_speedlimit 1<<2
 #define msg_gpsfix 1<<1
 #define msg_launched 1<<0
-char packet[120];
+
 uint16_t crc;
+unsigned int packetNum = 0;
 
 //Pressure Sensor Variables
 unsigned int sensorValue; //Integer value for ADC reading from pressure sensor
 int pressure; //Integer value for pressure given by the mapping formula below
 boolean cardavailable;
 
+//battery voltages
 int v_in;
 int vs_in;
 
@@ -196,7 +176,7 @@ void loop()
   getgps();
   getvtg();
   readpressure();
-  //valvecontrol();
+  valvecontrol();
   transmit();
   logit();
   DEBUG_PRINTLN();
@@ -258,6 +238,7 @@ void cutdown(boolean state)
 
 void valvecontrol() 
 {
+
   if (haslaunched) {
     if (fix_age < 1800000) { //If the last GPS lock was less than half an hour ago
       
@@ -277,37 +258,36 @@ void valvecontrol()
           else {
             servopos(servoClosed);
             formatdebug(( msg_speedlimit ),false);
-          }   
+          }
         }
       } 
       else {
         cutdown(true);
         formatdebug(( msg_cutdown | msg_geofence ),true);
-        //servopos(servoOpen);
+        servopos(servoOpen);
       }
     } 
     else {
       cutdown(true);
       formatdebug(( msg_cutdown | msg_gpsfix ),true);
-      //servopos(servoOpen); //open the valve to dump helium
+      servopos(servoOpen); //open the valve to dump helium
     }
-  } 
+  }
   else if(alt > 500) {
     haslaunched = true;
-  } 
+  }
   else if(millis() - lastservomove > 100000) { //Make the servo close regularly until launch (as it is plugged in after filling)
     lastservopos = servoClosed - 1; //Make the system think the valve needs to be moved
     servopos(servoClosed);  
   }
-  
   if (cutdownalt <= f_alt) {
-    if (cutdowntimer = 0) {
+    if (cutdowntimer == 0) {
       cutdowntimer = millis();
-    } else if (cutdowntimer >= floattime) {
+    } else if (long(millis() >= (cutdowntimer + floattime))) {
       cutdown(true);
       formatdebug(( msg_cutdown | msg_floatlimit ),true);
     }
-  }   
+  }
 }
 
 void formatdebug(byte mask,boolean val) {
@@ -320,14 +300,14 @@ void formatdebug(byte mask,boolean val) {
 }
 
 void servopos(int pos) {
-  digitalWrite(P_SERVO_EN,HIGH); //Turn the MOSFET on
+  //digitalWrite(P_SERVO_EN,HIGH); //Turn the MOSFET on
   int x = 0;
   if (pos != lastservopos) //If the desired servo position has changed
     if (pos >= lastservopos) //If the servo position has increased
     {
       for (x = lastservopos; x <= pos; x++) //Slowly increase the servo's position
       {
-        vservo.write(x);
+        //vservo.write(x);
         delay(10);
       }
     }
@@ -335,15 +315,15 @@ void servopos(int pos) {
   {
     for (x = lastservopos; x >= pos; x--) //Slowly decrease the servo's position
     {
-      vservo.write(x);
+      //vservo.write(x);
       delay(10);
     }
   }
   delay(500);
-  digitalWrite(P_SERVO_EN,LOW); //Turn the MOSFET off
+  //digitalWrite(P_SERVO_EN,LOW); //Turn the MOSFET off
   lastservopos = pos; // write the new servo position to the register
-  if (pos == servoClosed) formatdebug(msg_valvestate,false);
-  if (pos == servoOpen) formatdebug(msg_valvestate,true);
+  //if (pos == servoClosed) formatdebug(msg_valvestate,false);
+  //if (pos == servoOpen) formatdebug(msg_valvestate,true);
 }
 
 int readTemperature()
@@ -399,6 +379,7 @@ float getextTemperature(){
 //moving average array.
 //******************************************
 float speedavg(){
+  float speedarray[20]; //Declare array to store speed values to create moving average
   float speedcalc; //initalise float for speed
   for (int i = 0; i <= MOVINGAVG ; i++) { //loop through the values to add together
     if ((floatindex - i) < 0) { // if the index drops off the bottom of the array
@@ -431,6 +412,10 @@ uint16_t CRC16 (char *c)
 //******************************************
 float flightplan(){
   float targetspeed;
+  int flightalt[] = {
+  0,5000,10000,15000,20000,30000}; //Initialise variable array for altitude control points
+  float flightspd[] = {
+  30.0,5.0,4.0,2.0,0.0,0.0}; //Initialise variable array for controlled speeds in m/s
   for (int i = 0; i < arraysize; i++) //lookup which array element relates to the current altitude
   {
     if ( flightalt[i] <= f_alt) 
@@ -446,6 +431,7 @@ float flightplan(){
 //}
 
 void transmit(){
+  char packet[120];
   packetNum++;
   char slat[10], slon[10], salt[8], stemp[6],sint[6];
   //ftoa(slat,f_lat,8); 
@@ -457,7 +443,7 @@ void transmit(){
   fmtDouble(f_alt,6,salt,8);
   fmtDouble(getextTemperature(),2,stemp,6);
   fmtDouble(averageTemperature(),2,sint,6);
-  int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d,%d,%s,%s*",packetNum,hour,minutes,second,slat,slon,salt,pressure,v_in,vs_in,sint,stemp);
+  int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d,%d,%s,%s,%X,%u*",packetNum,hour,minutes,second,slat,slon,salt,pressure,v_in,vs_in,sint,stemp,debugmsg,freeMemory());
   crc = (CRC16(&packet[3]));
   result = sprintf(&packet[result],"%04X\n",crc);
   //delay(1000);
@@ -484,11 +470,11 @@ void readpressure() {
 //-tem. 
 //******************************************
 void logit() {
-  char temp[10];
+  //char temp[10];
   if (cardavailable) {
     File dataFile = SD.open("datalog.txt", FILE_WRITE);
     if (dataFile) {
-      dataFile.print(packet);
+      //dataFile.print(packet);
       dataFile.print(",Lat:,");
       dataFile.print(lat);
       dataFile.print(",Lon:, ");
@@ -738,12 +724,4 @@ fmtDouble(double val, byte precision, char *buf, unsigned bufLen)
 
   // null-terminate the string
   *buf = '\0';
-} 
-
-
-
-
-
-
-
-
+}
