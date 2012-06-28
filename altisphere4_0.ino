@@ -103,6 +103,8 @@ boolean haslaunched = false;
 //Pre-Flight Variables
 #define arraysize 6 //Define size of flight altitude array
 unsigned long cutdowntimer = 0;
+unsigned long cutdownon = 0;
+unsigned long launchtimer = 0;
 const float cutdownalt = 20000.0;
 const unsigned long floattime = 1800000; //Half an hour in millis
 
@@ -230,10 +232,21 @@ void cutdown(boolean state)
 {
   pinMode(P_CUTDOWN,OUTPUT);
   if (state) {
+    if (cutdownon == 0) {
   digitalWrite(P_CUTDOWN,HIGH);
+  cutdownon = millis();
+    }
   } else {
   digitalWrite(P_CUTDOWN,LOW);
   }
+  
+  if ((millis() - cutdownon > 600000) && (digitalRead(P_CUTDOWN) == HIGH)) {
+    digitalWrite(P_CUTDOWN,LOW);
+    formatdebug(( msg_cutdown ),false);
+    cutdownon = 0;
+  }
+  
+
 }
 
 void valvecontrol() 
@@ -275,6 +288,8 @@ void valvecontrol()
   }
   else if(alt > 500) {
     haslaunched = true;
+    launchtimer = millis();
+    formatdebug(( msg_launched ),true);
   }
   else if(millis() - lastservomove > 100000) { //Make the servo close regularly until launch (as it is plugged in after filling)
     lastservopos = servoClosed - 1; //Make the system think the valve needs to be moved
@@ -283,11 +298,14 @@ void valvecontrol()
   if (cutdownalt <= f_alt) {
     if (cutdowntimer == 0) {
       cutdowntimer = millis();
-    } else if (long(millis() >= (cutdowntimer + floattime))) {
+    } else if (millis() >= (cutdowntimer + floattime)) {
       cutdown(true);
       formatdebug(( msg_cutdown | msg_floatlimit ),true);
     }
   }
+  if (launchtimer > 14400000) //If 4 hours since launch
+    cutdown(true);
+    formatdebug(( msg_cutdown | msg_timefence ),true);
 }
 
 void formatdebug(byte mask,boolean val) {
@@ -443,7 +461,8 @@ void transmit(){
   fmtDouble(f_alt,6,salt,8);
   fmtDouble(getextTemperature(),2,stemp,6);
   fmtDouble(averageTemperature(),2,sint,6);
-  int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d,%d,%s,%s,%X,%u*",packetNum,hour,minutes,second,slat,slon,salt,pressure,v_in,vs_in,sint,stemp,debugmsg,freeMemory());
+  //int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d,%d,%s,%s,%X,%u*",packetNum,hour,minutes,second,slat,slon,salt,pressure,v_in,vs_in,sint,stemp,debugmsg,freeMemory());
+  int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d,%d,%s,%s,%X*",packetNum,hour,minutes,second,slat,slon,salt,pressure,v_in,vs_in,sint,stemp,debugmsg);
   crc = (CRC16(&packet[3]));
   result = sprintf(&packet[result],"%04X\n",crc);
   //delay(1000);
