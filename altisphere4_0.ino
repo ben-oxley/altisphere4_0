@@ -179,12 +179,17 @@ void loop()
   getvtg();
   readpressure();
   valvecontrol();
-  transmit();
+  if ((packetNum % 10) == 0) {
+    transmit(false);
+  } else {
+    transmit(true);
+  }
   logit();
   DEBUG_PRINTLN();
   DEBUG_PRINT(lat);
   DEBUG_PRINT(lon);
   DEBUG_PRINTLN(alt);
+  
 
 }     
 
@@ -448,9 +453,10 @@ float flightplan(){
 //  gps.encode(Serial.read());
 //}
 
-void transmit(){
+void transmit(boolean fast){
   char packet[120];
   packetNum++;
+  
   char slat[10], slon[10], salt[8], stemp[6],sint[6];
   //ftoa(slat,f_lat,8); 
   //ftoa(slon,f_lon,8);
@@ -461,6 +467,7 @@ void transmit(){
   fmtDouble(f_alt,6,salt,8);
   fmtDouble(getextTemperature(),2,stemp,6);
   fmtDouble(averageTemperature(),2,sint,6);
+  if (fast) {
   //int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d,%d,%s,%s,%X,%u*",packetNum,hour,minutes,second,slat,slon,salt,pressure,v_in,vs_in,sint,stemp,debugmsg,freeMemory());
   int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d,%d,%s,%s,%X*",packetNum,hour,minutes,second,slat,slon,salt,pressure,v_in,vs_in,sint,stemp,debugmsg);
   crc = (CRC16(&packet[3]));
@@ -470,6 +477,17 @@ void transmit(){
   rtty_tx(packet,1);
   //set timers
   //return
+  } else {
+  //int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d,%d,%s,%s,%X,%u*",packetNum,hour,minutes,second,slat,slon,salt,pressure,v_in,vs_in,sint,stemp,debugmsg,freeMemory());
+  int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%X*",packetNum,hour,minutes,second,slat,slon,salt,debugmsg);
+  crc = (CRC16(&packet[3]));
+  result = sprintf(&packet[result],"%04X\n",crc);
+  //delay(1000);
+  rtty_preamble(0);
+  rtty_tx(packet,0);
+  //set timers
+  //return
+  } 
 }
 
 void readpressure() {
