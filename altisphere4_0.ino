@@ -190,8 +190,6 @@ void loop()
   DEBUG_PRINT(lat);
   DEBUG_PRINT(lon);
   DEBUG_PRINTLN(alt);
-
-
 }     
 
 void getgps() {
@@ -203,7 +201,7 @@ void getgps() {
     DEBUG_SD_WRITE(c);
     if (gps.encode(c))
     {
-      logchar('!');
+      DEBUG_SD_WRITE('!');
       gps.get_position(&lat, &lon, &fix_age);
       gps.f_get_position(&f_lat, &f_lon, &fix_age);
       alt = gps.altitude();
@@ -222,7 +220,7 @@ void getgps() {
     DEBUG_SD_WRITE(c);
     if (gps.encode(c))
     {
-      logchar('!');
+      DEBUG_SD_WRITE('!');
       gps.get_position(&lat, &lon, &fix_age);
       gps.f_get_position(&f_lat, &f_lon, &fix_age);
       f_alt = gps.f_altitude();
@@ -504,7 +502,7 @@ void readpressure() {
   }
   sensorValue /= 5;
   pressure = map(sensorValue, 4, 927, -2000, 2000);  //Map ADC to pressure
-  pressure -= 45;
+  pressure -= 51;
 }
 
 //******************************************
