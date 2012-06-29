@@ -260,7 +260,7 @@ void valvecontrol()
   if (haslaunched) {
     if (fix_age < 1800000) { //If the last GPS lock was less than half an hour ago
       
-      if ((lat < 5223) && (lon < 20) && (lon > 1) && (lat > 4000)) {
+      if ((f_lat < 52.23) && (f_lon < 00.20) && (f_lon > 0.1) && (f_lat > 40.00)) {
         if ((fix_age > 60000) && (speedavg() > 1)) // close the valve until a new gps position is gained
         {
           servopos(servoClosed);
@@ -454,7 +454,7 @@ float flightplan(){
 //}
 
 void transmit(boolean fast){
-  char packet[120];
+  char packet[100];
   packetNum++;
   
   char slat[10], slon[10], salt[8], stemp[6],sint[6];
