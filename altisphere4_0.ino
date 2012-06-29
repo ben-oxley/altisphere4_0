@@ -134,7 +134,7 @@ int vs_in;
 
 void setup()
 {
-  
+
   analogReference(INTERNAL); //Use internal 1.1V reference voltage
   ADMUX = 0xC8;
   delay(10);
@@ -163,12 +163,12 @@ void setup()
   //Wire.beginTransmission(0x00); These 3 lines reset all registers
   //Wire.write(0x06); 
   //Wire.endTransmission();
-  
+
   //vservo.attach(P_SERVO_DATA);          // attaches the servo on pin 9 to the servo object 
   //vservo.write(servoClosed);                  // sets the servo position according to the scaled value 
   delay(15);                           // waits for the servo to get there 
-  
-  
+
+
 }
 
 
@@ -181,7 +181,8 @@ void loop()
   valvecontrol();
   if ((packetNum % 10) == 0) {
     transmit(false);
-  } else {
+  } 
+  else {
     transmit(true);
   }
   logit();
@@ -189,7 +190,7 @@ void loop()
   DEBUG_PRINT(lat);
   DEBUG_PRINT(lon);
   DEBUG_PRINTLN(alt);
-  
+
 
 }     
 
@@ -238,28 +239,27 @@ void cutdown(boolean state)
   pinMode(P_CUTDOWN,OUTPUT);
   if (state) {
     if (cutdownon == 0) {
-  digitalWrite(P_CUTDOWN,HIGH);
-  cutdownon = millis();
+      servopos(servoOpen);
+      digitalWrite(P_CUTDOWN,HIGH);
+      cutdownon = millis();
     }
-  } else {
-  digitalWrite(P_CUTDOWN,LOW);
+  } 
+  else {
+    digitalWrite(P_CUTDOWN,LOW);
   }
-  
   if ((millis() - cutdownon > 600000) && (digitalRead(P_CUTDOWN) == HIGH)) {
     digitalWrite(P_CUTDOWN,LOW);
     formatdebug(( msg_cutdown ),false);
     cutdownon = 0;
   }
-  
-
 }
 
 void valvecontrol() 
 {
 
-  if (haslaunched) {
+  if (haslaunched && (cutdownon == 0)) {
     if (fix_age < 1800000) { //If the last GPS lock was less than half an hour ago
-      
+
       if ((f_lat < 52.23) && (f_lon < 00.20) && (f_lon > 0.1) && (f_lat > 40.00)) {
         if ((fix_age > 60000) && (speedavg() > 1)) // close the valve until a new gps position is gained
         {
@@ -303,20 +303,22 @@ void valvecontrol()
   if (cutdownalt <= f_alt) {
     if (cutdowntimer == 0) {
       cutdowntimer = millis();
-    } else if (millis() >= (cutdowntimer + floattime)) {
+    } 
+    else if (millis() >= (cutdowntimer + floattime)) {
       cutdown(true);
       formatdebug(( msg_cutdown | msg_floatlimit ),true);
     }
   }
   if (launchtimer > 14400000) //If 4 hours since launch
     cutdown(true);
-    formatdebug(( msg_cutdown | msg_timefence ),true);
+  formatdebug(( msg_cutdown | msg_timefence ),true);
 }
 
 void formatdebug(byte mask,boolean val) {
   if(val){ //We want to change to a 1
     debugmsg = debugmsg | mask;
-  } else { //We want to change to a 0
+  } 
+  else { //We want to change to a 0
     mask = ~mask;
     debugmsg = debugmsg & mask;
   }
@@ -353,7 +355,7 @@ int readTemperature()
 {
   ADCSRA |= _BV(ADSC); // start the conversion
   while (bit_is_set(ADCSRA, ADSC)); // ADSC is cleared when the conversion finishes
-  return (ADCL | (ADCH << 8)) - 342; // combine bytes & correct for temp offset (approximate)}
+  return (ADCL | (ADCH << 8)) - 342; // combine bytes & correct for temp offset (approximate)
 }
 
 float averageTemperature()
@@ -377,10 +379,10 @@ void checkmem()
 float getextTemperature(){
   Wire.begin();
   /*delay(10);
-  Wire.beginTransmission(tmp102Address);
-  Wire.write(0x01);
-  Wire.write(0x79);
-  Wire.endTransmission();*/
+   Wire.beginTransmission(tmp102Address);
+   Wire.write(0x01);
+   Wire.write(0x79);
+   Wire.endTransmission();*/
   delay(20);
   Wire.requestFrom(tmp102Address,2); 
 
@@ -390,7 +392,7 @@ float getextTemperature(){
   //it's a 12bit int, using two's compliment for negative
   int TemperatureSum = ((MSB << 8) | LSB) >> 4; 
   if(TemperatureSum & (1<<11)) {
-		TemperatureSum |= 0xF800; //Set bits 11 to 15 to 1s to get this reading into real twos compliment
+    TemperatureSum |= 0xF800; //Set bits 11 to 15 to 1s to get this reading into real twos compliment
   }
   float celsius = float(TemperatureSum)/16;
   return celsius;
@@ -436,9 +438,9 @@ uint16_t CRC16 (char *c)
 float flightplan(){
   float targetspeed;
   int flightalt[] = {
-  0,5000,10000,15000,20000,30000}; //Initialise variable array for altitude control points
+    0,5000,10000,15000,20000,30000  }; //Initialise variable array for altitude control points
   float flightspd[] = {
-  30.0,5.0,4.0,2.0,0.0,0.0}; //Initialise variable array for controlled speeds in m/s
+    30.0,5.0,4.0,2.0,0.0,0.0  }; //Initialise variable array for controlled speeds in m/s
   for (int i = 0; i < arraysize; i++) //lookup which array element relates to the current altitude
   {
     if ( flightalt[i] <= f_alt) 
@@ -456,7 +458,7 @@ float flightplan(){
 void transmit(boolean fast){
   char packet[100];
   packetNum++;
-  
+
   char slat[10], slon[10], salt[8], stemp[6],sint[6];
   //ftoa(slat,f_lat,8); 
   //ftoa(slon,f_lon,8);
@@ -468,25 +470,28 @@ void transmit(boolean fast){
   fmtDouble(getextTemperature(),2,stemp,6);
   fmtDouble(averageTemperature(),2,sint,6);
   if (fast) {
-  //int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d,%d,%s,%s,%X,%u*",packetNum,hour,minutes,second,slat,slon,salt,pressure,v_in,vs_in,sint,stemp,debugmsg,freeMemory());
-  int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d,%d,%s,%s,%X*",packetNum,hour,minutes,second,slat,slon,salt,pressure,v_in,vs_in,sint,stemp,debugmsg);
-  crc = (CRC16(&packet[3]));
-  result = sprintf(&packet[result],"%04X\n",crc);
-  //delay(1000);
-  rtty_preamble(1);
-  rtty_tx(packet,1);
-  //set timers
-  //return
-  } else {
-  //int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d,%d,%s,%s,%X,%u*",packetNum,hour,minutes,second,slat,slon,salt,pressure,v_in,vs_in,sint,stemp,debugmsg,freeMemory());
-  int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%X*",packetNum,hour,minutes,second,slat,slon,salt,debugmsg);
-  crc = (CRC16(&packet[3]));
-  result = sprintf(&packet[result],"%04X\n",crc);
-  //delay(1000);
-  rtty_preamble(0);
-  rtty_tx(packet,0);
-  //set timers
-  //return
+    //int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d,%d,%s,%s,%X,%u*",
+    //packetNum,hour,minutes,second,slat,slon,salt,pressure,v_in,vs_in,sint,stemp,debugmsg,freeMemory());
+    int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d,%d,%s,%s,%X*",packetNum,hour,minutes,second,slat,slon,salt,pressure,v_in,vs_in,sint,stemp,debugmsg);
+    crc = (CRC16(&packet[3]));
+    result = sprintf(&packet[result],"%04X\n",crc);
+    //delay(1000);
+    rtty_preamble(1);
+    rtty_tx(packet,1);
+    //set timers
+    //return
+  } 
+  else {
+    //int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%d,%d,%d,%s,%s,%X,%u*",
+    //packetNum,hour,minutes,second,slat,slon,salt,pressure,v_in,vs_in,sint,stemp,debugmsg,freeMemory());
+    int result = sprintf(packet,"$$ALTI,%u,%02u:%02u:%02u,%s,%s,%s,%X*",packetNum,hour,minutes,second,slat,slon,salt,debugmsg);
+    crc = (CRC16(&packet[3]));
+    result = sprintf(&packet[result],"%04X\n",crc);
+    //delay(1000);
+    rtty_preamble(0);
+    rtty_tx(packet,0);
+    //set timers
+    //return
   } 
 }
 
@@ -762,3 +767,4 @@ fmtDouble(double val, byte precision, char *buf, unsigned bufLen)
   // null-terminate the string
   *buf = '\0';
 }
+
